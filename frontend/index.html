@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scam SOC Crew — Your Personal Link Scout</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body.soc-mode {
+      background-color: #030712;
+      background-image: radial-gradient(rgba(16, 185, 129, 0.08) 1px, transparent 0);
+      background-size: 24px 24px;
+    }
+  </style>
+</head>
+<body id="appBody" class="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-sky-500 selection:text-white">
+  <div class="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+    <header class="mb-6 flex flex-col gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sky-300">
+            <span class="h-2 w-2 rounded-full bg-sky-400"></span>
+            Hardened Sandbox Triage
+          </span>
+          <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
+            SSRF Guard · Stealth Mobile · DPDP PII Scrubber
+          </span>
+        </div>
+        <h1 class="mt-2 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
+          Scam SOC Crew — Your Personal Link Scout
+        </h1>
+        <p class="mt-1 text-sm text-slate-300">
+          Paste any suspicious SMS or link. We detonate it safely in a stealth mobile sandbox before you ever click.
+        </p>
+      </div>
+
+      <div class="flex flex-col items-start gap-2 sm:items-end">
+        <div class="inline-flex rounded-xl border border-slate-700 bg-slate-900 p-1 shadow-lg" role="group" aria-label="View Mode">
+          <button id="modeFamilyBtn" type="button" onclick="setViewMode('family')" class="rounded-lg bg-sky-400 px-3.5 py-2 text-xs font-extrabold text-slate-950 transition">
+            Family Safe Mode
+          </button>
+          <button id="modeSocBtn" type="button" onclick="setViewMode('soc')" class="rounded-lg px-3.5 py-2 font-mono text-xs font-bold text-slate-300 transition hover:text-emerald-300">
+            &gt;_ SOC Analyst Mode
+          </button>
+        </div>
+        <button type="button" onclick="openDamageControl()" class="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/50 bg-rose-500/15 px-3 py-1.5 text-xs font-bold text-rose-200 transition hover:bg-rose-500/30">
+          Already Clicked / Entered OTP? Get Emergency Help
+        </button>
+      </div>
+    </header>
+
+    <section class="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-2xl sm:p-6">
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <label for="messageInput" class="text-sm font-semibold text-slate-200">Suspicious Message or URL</label>
+        <span class="text-xs text-slate-400">Zero-trust permissions · APK intercept · Auto PII redaction</span>
+      </div>
+
+      <textarea id="messageInput" rows="3" placeholder="Paste suspicious SMS, WhatsApp forward, or URL here..." class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-base text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/30"></textarea>
+
+      <div class="mt-4">
+        <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Live Demo Presets</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" onclick="applyPreset('bescom')" class="rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/25">Fake BESCOM KYC Scam</button>
+          <button type="button" onclick="applyPreset('apk')" class="rounded-lg border border-purple-500/40 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-200 transition hover:bg-purple-500/25">Malicious APK Trojan Trap</button>
+          <button type="button" onclick="applyPreset('ssrf')" class="rounded-lg border border-orange-500/40 bg-orange-500/15 px-3 py-2 text-xs font-semibold text-orange-200 transition hover:bg-orange-500/25">SSRF Private Network Guard</button>
+          <button type="button" onclick="applyPreset('safe')" class="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/25">Safe Official Site</button>
+        </div>
+      </div>
+
+      <div class="mt-5 flex flex-col gap-4 border-t border-slate-800 pt-5 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Voice &amp; Verdict Language</p>
+          <div id="languagePills" class="inline-flex flex-wrap gap-2" role="group" aria-label="Language selector">
+            <button type="button" data-lang="en" onclick="selectLanguage('en')" class="lang-pill rounded-full border border-sky-400 bg-sky-500 px-4 py-1.5 text-sm font-bold text-slate-950 transition">English</button>
+            <button type="button" data-lang="kn" onclick="selectLanguage('kn')" class="lang-pill rounded-full border border-slate-700 bg-slate-800 px-4 py-1.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500">ಕನ್ನಡ (Kannada)</button>
+            <button type="button" data-lang="hi" onclick="selectLanguage('hi')" class="lang-pill rounded-full border border-slate-700 bg-slate-800 px-4 py-1.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500">हिन्दी (Hindi)</button>
+          </div>
+        </div>
+
+        <button id="inspectBtn" type="button" onclick="inspectMessage()" class="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-400 px-6 py-3.5 text-base font-extrabold text-slate-950 shadow-lg shadow-sky-500/20 transition hover:bg-sky-300 disabled:cursor-wait disabled:opacity-60">
+          <span id="inspectBtnLabel">Inspect Safely</span>
+        </button>
+      </div>
+
+      <div id="errorBanner" class="mt-4 hidden rounded-xl border border-rose-500/50 bg-rose-950/60 px-4 py-3 text-sm font-medium text-rose-200"></div>
+
+      <div id="loadingBox" class="mt-5 hidden rounded-xl border border-sky-500/30 bg-slate-950 p-4">
+        <div class="flex items-center gap-3">
+          <span class="inline-block h-5 w-5 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"></span>
+          <p id="loadingHeadline" class="text-sm font-bold text-sky-300">Validating SSRF &amp; scrubbing PII...</p>
+        </div>
+        <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
+          <div id="step-0" class="rounded-lg border border-sky-500/50 bg-sky-500/15 px-3 py-2 text-xs font-semibold text-sky-200">1. SSRF &amp; PII Guard</div>
+          <div id="step-1" class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-400">2. Stealth Mobile Sandbox</div>
+          <div id="step-2" class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-400">3. Gemini Vision &amp; Intel</div>
+          <div id="step-3" class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-400">4. ElevenLabs Voice</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="resultsPanel" class="mt-8 hidden space-y-6">
+      <div id="criticalAlertBanner" class="hidden rounded-2xl border-2 border-rose-500 bg-rose-950/90 p-5 shadow-2xl">
+        <span id="criticalAlertTag" class="inline-block rounded-md bg-rose-500 px-2.5 py-0.5 text-xs font-black uppercase tracking-wider text-white">CRITICAL SECURITY INTERCEPT</span>
+        <h2 id="criticalAlertTitle" class="mt-2 text-lg font-extrabold text-white"></h2>
+        <p id="criticalAlertDetail" class="mt-1 text-sm text-rose-100"></p>
+      </div>
+
+      <div id="piiNoticeBanner" class="hidden rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-3 text-xs text-emerald-200"></div>
+
+      <div id="verdictCard" class="rounded-2xl border p-6 shadow-xl">
+        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-widest opacity-80">Scout Verdict</p>
+            <div class="mt-2 flex flex-wrap items-center gap-3">
+              <span id="verdictBadge" class="inline-flex items-center rounded-xl px-4 py-1.5 text-xl font-black tracking-wide">DANGEROUS</span>
+              <span id="domainSummaryBadge" class="rounded-lg border border-white/15 bg-black/25 px-3 py-1 text-xs font-medium text-slate-200"></span>
+            </div>
+          </div>
+          <div class="rounded-xl border border-white/15 bg-black/30 px-5 py-3 text-left sm:text-right">
+            <p class="text-xs font-semibold uppercase tracking-wider opacity-80">Risk Score</p>
+            <p class="text-3xl font-black text-white"><span id="riskScoreValue">0</span><span class="text-base font-semibold opacity-70"> / 100</span></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- FAMILY SAFE MODE -->
+      <div id="familyView" class="space-y-6">
+        <div class="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="text-lg font-bold text-white">Listen to Calm Voice Verdict</h2>
+              <p id="audioSourceLabel" class="text-xs text-slate-400">Audio summary ready</p>
+            </div>
+            <button id="playAudioBtn" type="button" onclick="toggleVoicePlayback()" class="inline-flex items-center gap-2 rounded-xl bg-emerald-400 px-5 py-3 text-sm font-extrabold text-slate-950 transition hover:bg-emerald-300">
+              <span id="playAudioLabel">Play Voice Verdict</span>
+            </button>
+          </div>
+          <audio id="elevenLabsAudio" controls class="mt-4 hidden w-full rounded-lg"></audio>
+          <blockquote id="voiceScriptText" class="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4 text-base leading-relaxed text-slate-100"></blockquote>
+        </div>
+
+        <div class="rounded-2xl border border-indigo-500/30 bg-slate-900 p-6 shadow-xl">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 class="text-lg font-bold text-white">AI Visual &amp; Scam Psychology Breakdown</h2>
+              <p id="visionSourceLabel" class="text-xs text-indigo-300"></p>
+            </div>
+            <span id="brandSpoofPill" class="hidden rounded-full border border-rose-500/50 bg-rose-500/20 px-3 py-1 text-xs font-bold text-rose-200"></span>
+          </div>
+          <p id="visionVerdictText" class="mt-3 rounded-xl border border-slate-800 bg-slate-950 p-3.5 text-sm leading-relaxed text-slate-200"></p>
+          <div id="tacticsGrid" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div class="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+            <h2 class="text-lg font-bold text-white">Why we flagged this</h2>
+            <ul id="evidenceList" class="mt-4 space-y-3 text-sm leading-relaxed text-slate-200"></ul>
+          </div>
+
+          <div id="nextStepsCard" class="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+            <div class="flex items-center justify-between gap-2">
+              <h2 class="text-lg font-bold text-white">What to do next</h2>
+              <button type="button" onclick="openDamageControl()" class="rounded-lg border border-rose-500/50 bg-rose-500/20 px-3 py-1.5 text-xs font-bold text-rose-200 transition hover:bg-rose-500/35">I Already Clicked It!</button>
+            </div>
+            <div id="nextStepsBody" class="mt-4 space-y-3 text-sm leading-relaxed text-slate-200"></div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-sky-500/30 bg-slate-900 p-6 shadow-xl">
+          <h2 class="text-lg font-bold text-white">Instant Action Kit</h2>
+          <p class="mt-1 text-xs text-slate-400">Defanged URLs &amp; PII-scrubbed evidence ready for official reporting or warning your family.</p>
+          <div class="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="text-sm font-bold text-sky-300">1-Click 1930 / Chakshu Complaint</h3>
+                <button id="copyComplaintBtn" type="button" onclick="copyText('complaintPreview', 'copyComplaintBtn', 'Copy Complaint')" class="rounded-lg bg-sky-400 px-3 py-1.5 text-xs font-extrabold text-slate-950 hover:bg-sky-300">Copy Complaint</button>
+              </div>
+              <pre id="complaintPreview" class="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-800 bg-black/50 p-3 font-mono text-[11px] leading-relaxed text-slate-300"></pre>
+            </div>
+
+            <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-sm font-bold text-emerald-300">WhatsApp Family Safety Alert</h3>
+                <div class="flex gap-2">
+                  <button id="copyWaBtn" type="button" onclick="copyText('whatsappPreview', 'copyWaBtn', 'Copy Alert')" class="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/30">Copy Alert</button>
+                  <button type="button" onclick="downloadFamilySafetyCard()" class="rounded-lg bg-emerald-400 px-3 py-1.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-300">Download PNG Card</button>
+                </div>
+              </div>
+              <p id="whatsappPreview" class="mt-3 rounded-lg border border-slate-800 bg-black/50 p-3 text-xs leading-relaxed text-slate-200"></p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+          <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 class="text-lg font-bold text-white">Visual Proof &amp; Safe Redirect Trail</h2>
+              <p id="pageTitleLine" class="text-xs text-slate-400"></p>
+            </div>
+            <span id="finalUrlPill" class="mt-2 inline-block max-w-full truncate rounded-lg border border-slate-700 bg-slate-950 px-3 py-1 font-mono text-xs text-sky-300 sm:mt-0"></span>
+          </div>
+          <div class="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-5">
+            <div class="lg:col-span-2">
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Defanged Redirect Hops</p>
+              <ol id="redirectChainList" class="space-y-2"></ol>
+              <p id="intelNote" class="mt-4 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400"></p>
+            </div>
+            <div class="lg:col-span-3">
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Static Mobile Sandbox Screenshot (Non-Interactive)</p>
+              <div class="overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
+                <img id="sandboxScreenshot" alt="Sandboxed webpage screenshot" class="mx-auto hidden max-h-[420px] object-contain" />
+                <div id="screenshotFallback" class="hidden p-8 text-center text-sm text-slate-400"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SOC ANALYST TERMINAL VIEW -->
+      <div id="socView" class="hidden space-y-5 font-mono">
+        <div class="rounded-2xl border border-emerald-500/40 bg-black/90 p-5 shadow-2xl">
+          <p class="text-xs font-bold uppercase tracking-widest text-emerald-400">&gt; ENTERPRISE_SANDBOX_TELEMETRY</p>
+          <div id="socSecurityGrid" class="mt-3 grid grid-cols-1 gap-3 text-xs sm:grid-cols-3"></div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div class="rounded-2xl border border-cyan-500/30 bg-black/90 p-5">
+            <p class="text-xs font-bold uppercase tracking-widest text-cyan-400">&gt; NETWORK_AND_THREAT_INTEL</p>
+            <div id="socNetworkDump" class="mt-3 space-y-1.5 text-xs text-slate-300"></div>
+          </div>
+          <div class="rounded-2xl border border-cyan-500/30 bg-black/90 p-5">
+            <p class="text-xs font-bold uppercase tracking-widest text-cyan-400">&gt; HTTP_RESPONSE_HEADERS</p>
+            <pre id="socHeadersDump" class="mt-3 max-h-48 overflow-auto text-[11px] leading-relaxed text-emerald-300"></pre>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div class="rounded-2xl border border-emerald-500/30 bg-black/90 p-5">
+            <p class="text-xs font-bold uppercase tracking-widest text-emerald-400">&gt; DEFANGED_REDIRECT_GRAPH</p>
+            <div id="socRedirectGraph" class="mt-3 space-y-2 text-xs"></div>
+          </div>
+          <div class="rounded-2xl border border-emerald-500/30 bg-black/90 p-5">
+            <p class="text-xs font-bold uppercase tracking-widest text-emerald-400">&gt; RISK_SCORING_RULES</p>
+            <div id="socScoreRules" class="mt-3 space-y-1.5 text-xs"></div>
+          </div>
+        </div>
+
+        <div class="rounded-2xl border border-amber-500/30 bg-black/90 p-5">
+          <p class="text-xs font-bold uppercase tracking-widest text-amber-400">&gt; DOM_FORM_INPUT_EXTRACTION</p>
+          <pre id="socDomDump" class="mt-3 max-h-56 overflow-auto text-[11px] leading-relaxed text-amber-200"></pre>
+        </div>
+
+        <div class="rounded-2xl border border-slate-700 bg-black/90 p-5 text-xs text-slate-300">
+          <p class="font-bold uppercase tracking-widest text-sky-400">&gt; FORENSIC_EVIDENCE_INTEGRITY</p>
+          <p class="mt-2 break-all"><span class="text-slate-500">SCREENSHOT_SHA256:</span> <span id="socSha256" class="text-emerald-300"></span></p>
+          <p class="mt-1 break-all"><span class="text-slate-500">REDACTED_MESSAGE:</span> <span id="socRedactedMsg" class="text-slate-200"></span></p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- DAMAGE CONTROL MODAL -->
+  <div id="damageControlModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+    <div class="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-rose-500/50 bg-slate-900 p-6 shadow-2xl">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <span class="rounded-md bg-rose-500 px-2.5 py-0.5 text-[11px] font-black uppercase text-white">Emergency Damage Control</span>
+          <h2 class="mt-2 text-xl font-extrabold text-white">Already Clicked the Link? Stay Calm.</h2>
+          <p class="mt-1 text-sm text-slate-300">Tell us what happened so we can give you the exact next steps in your language.</p>
+        </div>
+        <button type="button" onclick="closeDamageControl()" class="rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-bold text-slate-300 hover:bg-slate-800">Close</button>
+      </div>
+
+      <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button type="button" onclick="loadEmergencyPlan(true)" class="rounded-xl border border-rose-500/60 bg-rose-500/20 p-4 text-left transition hover:bg-rose-500/35">
+          <p class="text-sm font-extrabold text-rose-200">Yes — I entered OTP / UPI PIN or installed an app</p>
+          <p class="mt-1 text-xs text-rose-100/80">Immediate bank freeze + 1930 golden-hour checklist</p>
+        </button>
+        <button type="button" onclick="loadEmergencyPlan(false)" class="rounded-xl border border-amber-500/60 bg-amber-500/15 p-4 text-left transition hover:bg-amber-500/30">
+          <p class="text-sm font-extrabold text-amber-200">No — I only opened the link</p>
+          <p class="mt-1 text-xs text-amber-100/80">Safe cleanup &amp; sender blocking steps</p>
+        </button>
+      </div>
+
+      <div id="emergencyPlanBox" class="mt-5 hidden space-y-4 rounded-xl border border-slate-700 bg-slate-950 p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <p id="emergencyPlanTitle" class="text-sm font-bold text-white"></p>
+          <button id="playEmergencyAudioBtn" type="button" onclick="playEmergencyAudio()" class="rounded-lg bg-emerald-400 px-3 py-1.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-300">Play Calm Voice Guide</button>
+        </div>
+        <audio id="emergencyAudioEl" controls class="hidden w-full"></audio>
+        <p id="emergencyScriptText" class="rounded-lg border border-slate-800 bg-slate-900 p-3 text-sm leading-relaxed text-slate-100"></p>
+        <ol id="emergencyStepsList" class="space-y-2 text-xs leading-relaxed text-slate-200"></ol>
+      </div>
+    </div>
+  </div>
+
+  <canvas id="safetyCardCanvas" width="900" height="520" class="hidden"></canvas>
+  <script src="/app.js"></script>
+</body>
+</html>
