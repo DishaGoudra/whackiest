@@ -1,300 +1,1111 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Scam SOC Crew — Your Personal Link Scout</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Scam SOC Crew — Link Sandbox &amp; Evidence Bench</title>
+  <meta name="description" content="Paste a suspicious SMS, WhatsApp forward, or URL. Scam SOC Crew opens it in an isolated browser sandbox, redacts personal data, and explains the verdict in 25 languages." />
+  <meta property="og:title" content="Scam SOC Crew — Link Sandbox &amp; Evidence Bench" />
+  <meta property="og:description" content="Isolated headless-browser link triage, automatic PII redaction, and multilingual voice verdicts for families and SOC analysts." />
+  <meta property="og:type" content="website" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ececee' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='24' height='24' rx='5' fill='%23121214' stroke='none'/%3E%3Cpath d='M12 20s7-3.5 7-8.75V6l-7-2.5L5 6v5.25C5 16.5 12 20 12 20z' stroke='%2379aef0'/%3E%3Cpath d='m9.5 12 1.75 1.75L14.75 10' stroke='%2374d1a0'/%3E%3C/svg%3E" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Devanagari:wght@400;500&family=Noto+Sans+Kannada:wght@400;500&display=swap" rel="stylesheet" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"IBM Plex Sans"', '"Noto Sans Devanagari"', '"Noto Sans Kannada"', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
   <style>
-    body.soc-mode {
-      background-color: #030712;
-      background-image: radial-gradient(rgba(16, 185, 129, 0.08) 1px, transparent 0);
-      background-size: 24px 24px;
+    :root, [data-theme="dark"] {
+      --bg: #121214;
+      --surface: #1a1a1d;
+      --raised: #232327;
+      --line: rgba(255, 255, 255, 0.08);
+      --text: #ececee;
+      --text-2: #a6a6ad;
+      --muted: #7e7e86;
+      --accent: #3b82f6;
+      --accent-ink: #ffffff;
+      --bad: #ef4444;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      color-scheme: dark;
+    }
+
+    [data-theme="light"] {
+      --bg: #f6f6f3;
+      --surface: #ffffff;
+      --raised: #eeeeea;
+      --line: rgba(20, 20, 22, 0.1);
+      --text: #141416;
+      --text-2: #4b4b50;
+      --muted: #6b6b72;
+      --accent: #1d4ed8;
+      --accent-ink: #ffffff;
+      --bad: #ef4444;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+      color-scheme: light;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      padding-bottom: env(safe-area-inset-bottom);
+      transition: background-color 220ms var(--ease-out), color 220ms var(--ease-out);
+    }
+
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    .lang-indic { line-height: 1.65; }
+    .text-balance { text-wrap: balance; }
+
+    .surface-card { background-color: var(--surface); }
+    .surface-raised { background-color: var(--raised); }
+    .surface-deep { background-color: var(--bg); }
+    .text-primary { color: var(--text); }
+    .text-secondary { color: var(--text-2); }
+    .text-muted { color: var(--muted); }
+    .text-accent { color: var(--accent); }
+
+    .focus-ring:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    /* Hit slop helper for compact controls */
+    .hit-slop { position: relative; }
+    .hit-slop::after {
+      content: "";
+      position: absolute;
+      inset: -6px;
+    }
+
+    /* Mode switch sliding thumb */
+    .mode-group { position: relative; }
+    #modeThumb {
+      position: absolute;
+      top: 4px;
+      left: 4px;
+      height: calc(100% - 8px);
+      border-radius: 6px;
+      background-color: var(--text);
+      transition: transform 220ms var(--ease-out), width 220ms var(--ease-out);
+      pointer-events: none;
+      z-index: 0;
+    }
+    #modeFamilyBtn, #modeSocBtn {
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Smooth animated caret */
+    .smooth-caret-wrap { position: relative; }
+    #smoothCaret {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 2px;
+      height: 1.25em;
+      background-color: var(--accent);
+      border-radius: 1px;
+      pointer-events: none;
+      opacity: 0;
+      transition: transform 95ms var(--ease-out), opacity 140ms ease;
+      will-change: transform, opacity;
+    }
+    #caretMirror {
+      position: absolute;
+      top: 0;
+      left: 0;
+      visibility: hidden;
+      pointer-events: none;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+
+    /* View Transitions for theme switch */
+    ::view-transition-group(root) {
+      animation-duration: 520ms;
+      animation-timing-function: var(--ease-out);
+    }
+    ::view-transition-old(root) { animation: none; z-index: -1; }
+    ::view-transition-new(root) {
+      animation-name: theme-circle-reveal;
+    }
+    @keyframes theme-circle-reveal {
+      from { clip-path: circle(0% at var(--tx, 90%) var(--ty, 28px)); }
+      to { clip-path: circle(150% at var(--tx, 90%) var(--ty, 28px)); }
+    }
+
+    @keyframes enterUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .load-enter { animation: enterUp 320ms var(--ease-out) both; }
+
+    @keyframes wavePulse {
+      0%, 100% { transform: scaleY(0.35); opacity: 0.55; }
+      50% { transform: scaleY(1); opacity: 1; }
+    }
+    .wave-bar {
+      transform-origin: center;
+      transition: transform 180ms var(--ease-out);
+    }
+    .wave-playing .wave-bar { animation: wavePulse 0.9s ease-in-out infinite; }
+    .wave-playing .wave-bar:nth-child(2) { animation-delay: 0.15s; }
+    .wave-playing .wave-bar:nth-child(3) { animation-delay: 0.3s; }
+    .wave-playing .wave-bar:nth-child(4) { animation-delay: 0.45s; }
+    .wave-playing .wave-bar:nth-child(5) { animation-delay: 0.2s; }
+
+    @keyframes waveDriftA {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(-28px); }
+    }
+    @keyframes waveDriftB {
+      0%, 100% { transform: translateX(-18px); }
+      50% { transform: translateX(18px); }
+    }
+    @keyframes waveDriftC {
+      0%, 100% { transform: translateX(12px); }
+      50% { transform: translateX(-20px); }
+    }
+    .footer-wave-a { animation: waveDriftA 11s ease-in-out infinite; }
+    .footer-wave-b { animation: waveDriftB 15s ease-in-out infinite; }
+    .footer-wave-c { animation: waveDriftC 19s ease-in-out infinite; }
+
+    @keyframes scanSweep {
+      0%, 100% { transform: translateY(0); opacity: 0.25; }
+      50% { transform: translateY(34px); opacity: 0.85; }
+    }
+    .specimen-scan-line {
+      animation: scanSweep 3.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .load-enter, .wave-playing .wave-bar, .footer-wave-a, .footer-wave-b, .footer-wave-c, .specimen-scan-line { animation: none; }
+      ::view-transition-group(root), ::view-transition-new(root) { animation: none !important; }
+      * { transition-duration: 0.01ms !important; }
     }
   </style>
 </head>
-<body id="appBody" class="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-sky-500 selection:text-white">
-  <div class="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-    <header class="mb-6 flex flex-col gap-4 border-b border-slate-800 pb-5 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <div class="flex flex-wrap items-center gap-2">
-          <span class="inline-flex items-center gap-2 rounded-full border border-sky-500/30 bg-sky-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sky-300">
-            <span class="h-2 w-2 rounded-full bg-sky-400"></span>
-            Hardened Sandbox Triage
-          </span>
-          <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
-            SSRF Guard · Stealth Mobile · DPDP PII Scrubber
-          </span>
+<body id="appBody" class="min-h-screen font-sans antialiased">
+  <!-- OFFLINE STATUS BANNER (Neutral surface + 2px left border) -->
+  <div id="offlineBanner" role="status" aria-live="polite" class="surface-card hidden px-4 py-2 text-center text-xs text-primary" style="border-bottom: 1px solid var(--line); border-left: 2px solid var(--warn);">
+    Offline mode detected. Live link inspection requires the local sandbox server.
+  </div>
+
+  <!-- TOP NAVIGATION BAR -->
+  <header class="sticky top-0 z-40" style="background-color: var(--bg); border-bottom: 1px solid var(--line);">
+    <div class="mx-auto flex max-w-[1440px] flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+      <div class="flex items-center gap-4">
+        <a href="#workbench" class="focus-ring rounded-lg py-1 pr-2 text-base font-medium tracking-tight text-primary">Scam SOC Crew</a>
+
+        <div class="hidden items-center gap-2.5 md:flex" title="Local scout rank based on completed scans">
+          <span id="navRankLabel" class="font-mono text-xs text-secondary tabular-nums">Trainee · 0 XP</span>
+          <div class="surface-raised h-1 w-16 overflow-hidden rounded-full">
+            <div id="navRankBar" class="h-full rounded-full transition-[width] duration-300" style="width: 0%; background-color: var(--text);"></div>
+          </div>
+          <span id="navStreakLabel" class="font-mono text-xs text-muted tabular-nums">0d</span>
         </div>
-        <h1 class="mt-2 text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-          Scam SOC Crew — Your Personal Link Scout
-        </h1>
-        <p class="mt-1 text-sm text-slate-300">
-          Paste any suspicious SMS or link. We detonate it safely in a stealth mobile sandbox before you ever click.
-        </p>
       </div>
 
-      <div class="flex flex-col items-start gap-2 sm:items-end">
-        <div class="inline-flex rounded-xl border border-slate-700 bg-slate-900 p-1 shadow-lg" role="group" aria-label="View Mode">
-          <button id="modeFamilyBtn" type="button" onclick="setViewMode('family')" class="rounded-lg bg-sky-400 px-3.5 py-2 text-xs font-extrabold text-slate-950 transition">
-            Family Safe Mode
+      <nav class="flex items-center gap-2" aria-label="Primary controls">
+        <div id="modeSwitchGroup" class="mode-group surface-card inline-flex rounded-lg p-1" role="group" aria-label="View Mode">
+          <div id="modeThumb"></div>
+          <button id="modeFamilyBtn" type="button" onclick="setViewMode('family')" class="focus-ring min-h-[36px] rounded-md px-3 py-1.5 text-xs font-medium transition-colors" style="color: var(--bg);">
+            Family Safe
           </button>
-          <button id="modeSocBtn" type="button" onclick="setViewMode('soc')" class="rounded-lg px-3.5 py-2 font-mono text-xs font-bold text-slate-300 transition hover:text-emerald-300">
-            &gt;_ SOC Analyst Mode
+          <button id="modeSocBtn" type="button" onclick="setViewMode('soc')" class="focus-ring min-h-[36px] rounded-md px-3 py-1.5 text-xs font-medium transition-colors text-secondary">
+            SOC Analyst
           </button>
         </div>
-        <button type="button" onclick="openDamageControl()" class="inline-flex items-center gap-1.5 rounded-lg border border-rose-500/50 bg-rose-500/15 px-3 py-1.5 text-xs font-bold text-rose-200 transition hover:bg-rose-500/30">
-          Already Clicked / Entered OTP? Get Emergency Help
+
+        <button id="navSosBtn" type="button" onclick="openDamageControl()" class="focus-ring surface-card inline-flex min-h-[40px] items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:opacity-90">
+          <svg class="h-4 w-4" style="color: var(--bad);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span class="hidden sm:inline" data-i18n="nav_sos">SOS</span>
+          <span class="sm:hidden">SOS</span>
         </button>
-      </div>
-    </header>
 
-    <section class="rounded-2xl border border-slate-800 bg-slate-900/90 p-5 shadow-2xl sm:p-6">
-      <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <label for="messageInput" class="text-sm font-semibold text-slate-200">Suspicious Message or URL</label>
-        <span class="text-xs text-slate-400">Zero-trust permissions · APK intercept · Auto PII redaction</span>
-      </div>
+        <!-- Skiper Animated Theme Toggle Button (View Transitions API) -->
+        <button id="themeToggle" type="button" onclick="toggleTheme(event)" aria-label="Toggle color theme" class="focus-ring surface-card flex h-10 w-10 items-center justify-center rounded-lg transition-transform active:scale-95">
+          <svg id="skiperThemeSvg" class="h-5 w-5 text-primary" viewBox="0 0 32 32" fill="currentColor" stroke-linecap="round" aria-hidden="true">
+            <clipPath id="skiper-theme-clip">
+              <path id="skiperClipPath" d="M0-5h30a1 1 0 0 0 9 13v24H0Z" style="transition: transform 350ms cubic-bezier(0.22, 1, 0.36, 1);" />
+            </clipPath>
+            <g clip-path="url(#skiper-theme-clip)">
+              <circle id="skiperSunCore" cx="16" cy="16" r="8" style="transition: r 350ms cubic-bezier(0.22, 1, 0.36, 1);" />
+              <g id="skiperSunRays" stroke="currentColor" stroke-width="1.5" style="transform-origin: 16px 16px; transition: transform 350ms cubic-bezier(0.22, 1, 0.36, 1), opacity 250ms ease;">
+                <path d="M16 5.5v-4" />
+                <path d="M16 30.5v-4" />
+                <path d="M1.5 16h4" />
+                <path d="M26.5 16h4" />
+                <path d="m23.4 8.6 2.8-2.8" />
+                <path d="m5.7 26.3 2.9-2.9" />
+                <path d="m5.8 5.8 2.8 2.8" />
+                <path d="m23.4 23.4 2.9 2.9" />
+              </g>
+            </g>
+          </svg>
+        </button>
 
-      <textarea id="messageInput" rows="3" placeholder="Paste suspicious SMS, WhatsApp forward, or URL here..." class="w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-base text-white placeholder-slate-500 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/30"></textarea>
-
-      <div class="mt-4">
-        <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Live Demo Presets</p>
-        <div class="flex flex-wrap gap-2">
-          <button type="button" onclick="applyPreset('bescom')" class="rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-2 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/25">Fake BESCOM KYC Scam</button>
-          <button type="button" onclick="applyPreset('apk')" class="rounded-lg border border-purple-500/40 bg-purple-500/15 px-3 py-2 text-xs font-semibold text-purple-200 transition hover:bg-purple-500/25">Malicious APK Trojan Trap</button>
-          <button type="button" onclick="applyPreset('ssrf')" class="rounded-lg border border-orange-500/40 bg-orange-500/15 px-3 py-2 text-xs font-semibold text-orange-200 transition hover:bg-orange-500/25">SSRF Private Network Guard</button>
-          <button type="button" onclick="applyPreset('safe')" class="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/25">Safe Official Site</button>
-        </div>
-      </div>
-
-      <div class="mt-5 flex flex-col gap-4 border-t border-slate-800 pt-5 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Voice &amp; Verdict Language</p>
-          <div id="languagePills" class="inline-flex flex-wrap gap-2" role="group" aria-label="Language selector">
-            <button type="button" data-lang="en" onclick="selectLanguage('en')" class="lang-pill rounded-full border border-sky-400 bg-sky-500 px-4 py-1.5 text-sm font-bold text-slate-950 transition">English</button>
-            <button type="button" data-lang="kn" onclick="selectLanguage('kn')" class="lang-pill rounded-full border border-slate-700 bg-slate-800 px-4 py-1.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500">ಕನ್ನಡ (Kannada)</button>
-            <button type="button" data-lang="hi" onclick="selectLanguage('hi')" class="lang-pill rounded-full border border-slate-700 bg-slate-800 px-4 py-1.5 text-sm font-semibold text-slate-200 transition hover:border-slate-500">हिन्दी (Hindi)</button>
+        <!-- Three-Line Menu -->
+        <div class="relative">
+          <button id="navMenuBtn" type="button" onclick="toggleNavMenu()" aria-haspopup="menu" aria-expanded="false" aria-label="Open menu" class="focus-ring surface-card flex h-10 w-10 items-center justify-center rounded-lg text-primary transition-colors hover:opacity-90">
+            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="12" x2="20" y2="12" />
+              <line x1="4" y1="17" x2="20" y2="17" />
+            </svg>
+          </button>
+          <div id="navMenuDropdown" role="menu" class="surface-card absolute right-0 z-50 mt-2 hidden w-56 rounded-xl p-1.5 shadow-xl" style="border: 1px solid var(--line);">
+            <button id="cmdMenuBtn" type="button" role="menuitem" onclick="toggleNavMenu(true); openCommandMenu()" class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-medium text-primary hover:bg-white/5">
+              <span>Command menu</span>
+              <kbd class="surface-raised rounded px-1.5 py-0.5 font-mono text-[11px] text-muted">⌘K</kbd>
+            </button>
+            <button id="navHistoryBtn" type="button" role="menuitem" onclick="toggleNavMenu(true); toggleHistoryDrawer()" class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-medium text-primary hover:bg-white/5">
+              <span data-i18n="nav_history">History</span>
+              <span id="historyCountBadge" class="font-mono text-xs text-secondary tabular-nums">0</span>
+            </button>
+            <button id="navHelpBtn" type="button" role="menuitem" onclick="toggleNavMenu(true); toggleHelpDrawer()" class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-medium text-primary hover:bg-white/5">
+              <span data-i18n="nav_help">Help and FAQ</span>
+            </button>
+            <button type="button" role="menuitem" onclick="toggleNavMenu(true); openLegalModal('choices')" class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-medium text-secondary hover:bg-white/5 hover:text-primary">
+              <span>Manage local data</span>
+            </button>
           </div>
         </div>
+      </nav>
+    </div>
+  </header>
 
-        <button id="inspectBtn" type="button" onclick="inspectMessage()" class="inline-flex items-center justify-center gap-2 rounded-xl bg-sky-400 px-6 py-3.5 text-base font-extrabold text-slate-950 shadow-lg shadow-sky-500/20 transition hover:bg-sky-300 disabled:cursor-wait disabled:opacity-60">
-          <span id="inspectBtnLabel">Inspect Safely</span>
-        </button>
+  <main id="workbench" class="mx-auto max-w-[1440px] px-4 py-8 sm:px-6 lg:px-8">
+    <!-- HERO-10 ASYMMETRIC EDITORIAL HEADER WITH LIVE REDACTION SPECIMEN -->
+    <section class="load-enter mb-8 grid grid-cols-1 gap-6 pb-8 lg:grid-cols-12 lg:items-end" style="border-bottom: 1px solid var(--line);">
+      <div class="lg:col-span-8">
+        <h1 data-i18n="hero_title" class="text-balance text-4xl font-medium text-primary sm:text-5xl lg:text-[54px] lg:leading-[1.06]">
+          Check a suspicious link before anyone in your family opens it
+        </h1>
       </div>
-
-      <div id="errorBanner" class="mt-4 hidden rounded-xl border border-rose-500/50 bg-rose-950/60 px-4 py-3 text-sm font-medium text-rose-200"></div>
-
-      <div id="loadingBox" class="mt-5 hidden rounded-xl border border-sky-500/30 bg-slate-950 p-4">
-        <div class="flex items-center gap-3">
-          <span class="inline-block h-5 w-5 animate-spin rounded-full border-2 border-sky-400 border-t-transparent"></span>
-          <p id="loadingHeadline" class="text-sm font-bold text-sky-300">Validating SSRF &amp; scrubbing PII...</p>
-        </div>
-        <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
-          <div id="step-0" class="rounded-lg border border-sky-500/50 bg-sky-500/15 px-3 py-2 text-xs font-semibold text-sky-200">1. SSRF &amp; PII Guard</div>
-          <div id="step-1" class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-400">2. Stealth Mobile Sandbox</div>
-          <div id="step-2" class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-400">3. Gemini Vision &amp; Intel</div>
-          <div id="step-3" class="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold text-slate-400">4. ElevenLabs Voice</div>
+      <div class="lg:col-span-4">
+        <div class="surface-card relative overflow-hidden rounded-xl p-4" style="border: 1px solid var(--line);">
+          <div class="specimen-scan-line pointer-events-none absolute inset-x-0 top-3 h-px" style="background-color: var(--text-2);"></div>
+          <div class="flex items-center justify-between text-xs text-muted">
+            <span class="font-mono">PREVIEW_SPECIMEN</span>
+            <a href="#howItWorks" class="focus-ring rounded text-xs font-medium text-primary hover:opacity-80">How it works</a>
+          </div>
+          <div class="surface-deep mt-2.5 rounded-lg p-3 font-mono text-xs leading-relaxed">
+            <p class="text-secondary">SMS: KYC pending for <span id="heroSpecimenPhone" class="text-primary transition-opacity duration-300">[PHONE_REDACTED]</span></p>
+            <p class="mt-1 truncate text-muted">Link: hxxp://kyc-check[.]example</p>
+          </div>
         </div>
       </div>
     </section>
 
-    <section id="resultsPanel" class="mt-8 hidden space-y-6">
-      <div id="criticalAlertBanner" class="hidden rounded-2xl border-2 border-rose-500 bg-rose-950/90 p-5 shadow-2xl">
-        <span id="criticalAlertTag" class="inline-block rounded-md bg-rose-500 px-2.5 py-0.5 text-xs font-black uppercase tracking-wider text-white">CRITICAL SECURITY INTERCEPT</span>
-        <h2 id="criticalAlertTitle" class="mt-2 text-lg font-extrabold text-white"></h2>
-        <p id="criticalAlertDetail" class="mt-1 text-sm text-rose-100"></p>
-      </div>
-
-      <div id="piiNoticeBanner" class="hidden rounded-xl border border-emerald-500/40 bg-emerald-950/40 px-4 py-3 text-xs text-emerald-200"></div>
-
-      <div id="verdictCard" class="rounded-2xl border p-6 shadow-xl">
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <!-- WORKBENCH: INSPECTOR + EVIDENCE BENCH SIDE BY SIDE -->
+    <section class="load-enter grid grid-cols-1 gap-6 lg:grid-cols-12 lg:items-start">
+      <!-- Left: Inspector Box -->
+      <div class="lg:col-span-7">
+        <div class="surface-card flex flex-col gap-5 rounded-2xl p-6">
           <div>
-            <p class="text-xs font-bold uppercase tracking-widest opacity-80">Scout Verdict</p>
-            <div class="mt-2 flex flex-wrap items-center gap-3">
-              <span id="verdictBadge" class="inline-flex items-center rounded-xl px-4 py-1.5 text-xl font-black tracking-wide">DANGEROUS</span>
-              <span id="domainSummaryBadge" class="rounded-lg border border-white/15 bg-black/25 px-3 py-1 text-xs font-medium text-slate-200"></span>
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <label for="messageInput" data-i18n="input_label" class="text-sm font-medium text-primary">Message or link to inspect</label>
+              <div class="flex items-center gap-3">
+                <span class="hidden text-xs text-muted sm:inline">Press <kbd class="surface-raised rounded px-1.5 py-0.5 font-mono text-[11px]">⌘Enter</kbd> to inspect</span>
+                <span id="charCountLabel" class="font-mono text-xs text-muted tabular-nums">0 / 4000</span>
+              </div>
+            </div>
+
+            <!-- Smooth Caret Input Wrapper -->
+            <div class="smooth-caret-wrap surface-deep rounded-xl p-1" style="border: 1px solid var(--line);">
+              <div id="caretMirror" aria-hidden="true" class="px-4 py-3 text-sm sm:text-base"></div>
+              <div id="smoothCaret" aria-hidden="true"></div>
+              <textarea
+                id="messageInput"
+                rows="4"
+                maxlength="4000"
+                placeholder="Paste SMS, WhatsApp forward, or URL"
+                class="focus-ring w-full resize-y rounded-lg bg-transparent px-4 py-3 text-sm text-primary placeholder-[#7e7e86] focus:outline-none sm:text-base"
+                style="caret-color: transparent;"
+              ></textarea>
+            </div>
+            <!-- Inline field error (no boxed alert) -->
+            <p id="errorBanner" role="alert" aria-live="polite" class="mt-2 hidden text-xs font-medium" style="color: var(--bad);"></p>
+
+            <!-- Image / Screenshot Attachment -->
+            <div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <input id="imageUploadInput" type="file" accept="image/png,image/jpeg,image/webp" onchange="handleImageUpload(event)" class="hidden" />
+                <button type="button" onclick="document.getElementById('imageUploadInput').click()" class="focus-ring surface-raised inline-flex min-h-[36px] items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <svg class="h-4 w-4 text-secondary" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                  <span>Attach screenshot</span>
+                </button>
+                <span class="text-xs text-muted">or paste an image</span>
+              </div>
+              <div id="imagePreviewWrap" class="surface-deep hidden items-center gap-2 rounded-lg px-2.5 py-1">
+                <img id="imagePreviewThumb" alt="Uploaded preview" class="h-7 w-7 rounded object-cover" />
+                <span id="imagePreviewName" class="max-w-[140px] truncate text-xs text-primary"></span>
+                <button id="clearImageBtn" type="button" onclick="clearUploadedImage()" class="focus-ring rounded px-1.5 py-0.5 text-xs text-muted hover:text-primary" aria-label="Remove image">Remove</button>
+              </div>
+            </div>
+
+            <!-- Privacy line -->
+            <p class="mt-3 flex items-start gap-2 text-xs text-muted">
+              <svg class="mt-0.5 h-4 w-4 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span data-i18n="privacy_line">Aadhaar, PAN, UPI IDs, phone numbers, and bank numbers are redacted before external checks. Scan history stays in your browser only.</span>
+            </p>
+
+            <!-- Demo Presets + Spot the Scam Guess -->
+            <div class="mt-5 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span data-i18n="presets_label" class="text-xs font-medium text-secondary">Sample cases</span>
+                <span id="spotPromptTag" class="hidden text-xs text-accent">Spot the scam: pick Safe or Dangerous before inspecting</span>
+              </div>
+              <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button type="button" onclick="applyPreset('bescom')" class="focus-ring surface-raised flex min-h-[44px] items-center justify-between rounded-lg px-4 py-2 text-left text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <span>BESCOM KYC notice</span>
+                  <span class="font-mono text-xs text-muted">01</span>
+                </button>
+                <button type="button" onclick="applyPreset('apk')" class="focus-ring surface-raised flex min-h-[44px] items-center justify-between rounded-lg px-4 py-2 text-left text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <span>Update APK download</span>
+                  <span class="font-mono text-xs text-muted">02</span>
+                </button>
+                <button type="button" onclick="applyPreset('ssrf')" class="focus-ring surface-raised flex min-h-[44px] items-center justify-between rounded-lg px-4 py-2 text-left text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <span>Restricted scheme URL</span>
+                  <span class="font-mono text-xs text-muted">03</span>
+                </button>
+                <button type="button" onclick="applyPreset('safe')" class="focus-ring surface-raised flex min-h-[44px] items-center justify-between rounded-lg px-4 py-2 text-left text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <span>Official reference site</span>
+                  <span class="font-mono text-xs text-muted">04</span>
+                </button>
+                <button type="button" onclick="applyPreset('upi')" class="focus-ring surface-raised flex min-h-[44px] items-center justify-between rounded-lg px-4 py-2 text-left text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <span>UPI cashback collect</span>
+                  <span class="font-mono text-xs text-muted">05</span>
+                </button>
+                <button type="button" onclick="applyPreset('courier')" class="focus-ring surface-raised flex min-h-[44px] items-center justify-between rounded-lg px-4 py-2 text-left text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <span>Parcel customs hold</span>
+                  <span class="font-mono text-xs text-muted">06</span>
+                </button>
+                <button type="button" onclick="applyPreset('bank')" class="focus-ring surface-raised flex min-h-[44px] items-center justify-between rounded-lg px-4 py-2 text-left text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <span>Bank KYC + PII scrub</span>
+                  <span class="font-mono text-xs text-muted">07</span>
+                </button>
+                <button type="button" onclick="applyPreset('gov')" class="focus-ring surface-raised flex min-h-[44px] items-center justify-between rounded-lg px-4 py-2 text-left text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <span>Official cybercrime portal</span>
+                  <span class="font-mono text-xs text-muted">08</span>
+                </button>
+              </div>
+
+              <!-- Spot the Scam Prediction Bar -->
+              <div id="spotGuessBar" class="surface-deep hidden items-center justify-between gap-3 rounded-lg px-4 py-2.5">
+                <span class="text-xs text-secondary">Your prediction (+15 XP if right)</span>
+                <div class="flex items-center gap-2">
+                  <button id="guessSafeBtn" type="button" onclick="setSpotGuess('SAFE')" class="focus-ring surface-raised min-h-[36px] rounded-md px-3 py-1 text-xs font-medium text-primary">Safe</button>
+                  <button id="guessDangerBtn" type="button" onclick="setSpotGuess('DANGEROUS')" class="focus-ring surface-raised min-h-[36px] rounded-md px-3 py-1 text-xs font-medium text-primary">Dangerous</button>
+                </div>
+              </div>
             </div>
           </div>
-          <div class="rounded-xl border border-white/15 bg-black/30 px-5 py-3 text-left sm:text-right">
-            <p class="text-xs font-semibold uppercase tracking-wider opacity-80">Risk Score</p>
-            <p class="text-3xl font-black text-white"><span id="riskScoreValue">0</span><span class="text-base font-semibold opacity-70"> / 100</span></p>
+
+          <!-- Single 25-Language Dropdown + Primary CTA -->
+          <div class="mt-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div class="space-y-2">
+              <label for="langDropdownBtn" data-i18n="lang_label" class="block text-xs font-medium text-secondary">Verdict and voice language</label>
+              <div id="languagePills" class="hidden" aria-hidden="true"></div>
+              <div class="relative">
+                <button id="langDropdownBtn" type="button" onclick="toggleLangDropdown()" aria-haspopup="listbox" aria-expanded="false" class="focus-ring surface-raised inline-flex min-h-[44px] min-w-[220px] items-center justify-between gap-3 rounded-lg px-4 py-2 text-xs font-medium text-primary transition-colors hover:opacity-90">
+                  <span id="langDropdownLabel">English (en) · 25 languages</span>
+                  <svg class="h-4 w-4 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+                <div id="langDropdownMenu" role="listbox" aria-label="Choose from 25 languages" class="surface-card absolute left-0 z-50 mt-2 hidden w-72 rounded-xl p-2 shadow-xl" style="border: 1px solid var(--line);">
+                  <input id="langSearchInput" type="search" oninput="filterLangDropdown(this.value)" placeholder="Search 25 languages" class="focus-ring surface-deep mb-2 w-full rounded-lg px-3 py-2 text-xs text-primary placeholder-[#7e7e86]" />
+                  <div id="langDropdownList" class="max-h-60 space-y-0.5 overflow-y-auto"></div>
+                </div>
+              </div>
+            </div>
+
+            <button id="inspectBtn" type="button" onclick="inspectMessage()" class="focus-ring inline-flex min-h-[44px] items-center justify-center gap-2 rounded-lg px-6 py-2.5 text-sm font-medium transition-transform active:scale-[0.98] disabled:cursor-wait disabled:opacity-60" style="background-color: var(--accent); color: var(--accent-ink);">
+              <svg id="inspectSpinner" class="hidden h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10"/></svg>
+              <svg id="inspectIcon" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <span id="inspectBtnLabel" data-i18n="inspect_btn">Inspect safely</span>
+            </button>
+          </div>
+
+          <!-- LIVE SSE CASE TIMELINE + SKELETON LOADER -->
+          <div id="loadingBox" class="surface-deep mt-5 hidden rounded-xl p-4">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5">
+                <span class="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-t-transparent" style="border-color: var(--accent); border-top-color: transparent;"></span>
+                <p id="loadingHeadline" class="text-sm font-medium text-primary">Checking link safety...</p>
+              </div>
+              <span id="loadingCaseTag" class="font-mono text-xs text-muted tabular-nums">CASE PENDING</span>
+            </div>
+            <div class="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-4">
+              <div id="step-0" class="surface-card rounded-lg px-3 py-2 text-xs text-muted">1. Guard and redact</div>
+              <div id="step-1" class="surface-card rounded-lg px-3 py-2 text-xs text-muted">2. Sandbox open</div>
+              <div id="step-2" class="surface-card rounded-lg px-3 py-2 text-xs text-muted">3. Vision and intel</div>
+              <div id="step-3" class="surface-card rounded-lg px-3 py-2 text-xs text-muted">4. Verdict and voice</div>
+            </div>
+            <div class="mt-4 grid grid-cols-3 gap-3 animate-pulse">
+              <div class="surface-card h-12 rounded-lg"></div>
+              <div class="surface-card h-12 rounded-lg"></div>
+              <div class="surface-card h-12 rounded-lg"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Evidence Bench Status (natural height, never stretches) -->
+      <aside class="lg:col-span-5 flex flex-col gap-4">
+        <div class="surface-card flex flex-col gap-4 rounded-2xl p-6">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <h2 class="text-sm font-medium text-primary">Evidence bench status</h2>
+              <p class="text-xs text-muted">Local scout progress and badges</p>
+            </div>
+            <span id="benchCaseCounter" class="surface-raised rounded-md px-2.5 py-1 font-mono text-xs text-secondary tabular-nums">CASE 0000</span>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div class="surface-deep rounded-xl p-3">
+              <p class="text-xs text-muted">Scans</p>
+              <p id="statTotalScans" class="mt-1 font-mono text-xl font-medium text-primary tabular-nums">0</p>
+            </div>
+            <div class="surface-deep rounded-xl p-3">
+              <p class="text-xs text-muted">Rank</p>
+              <p id="statRankName" class="mt-1 text-base font-medium text-primary">Trainee</p>
+            </div>
+            <div class="surface-deep rounded-xl p-3">
+              <p class="text-xs text-muted">Streak</p>
+              <p id="statStreakDays" class="mt-1 font-mono text-xl font-medium text-primary tabular-nums">0d</p>
+            </div>
+          </div>
+
+          <div>
+            <div class="mb-2 flex items-center justify-between">
+              <span class="text-xs text-secondary">Scout badges</span>
+              <span id="badgeCountText" class="font-mono text-xs text-muted tabular-nums">0 / 6</span>
+            </div>
+            <div id="badgesGrid" class="grid grid-cols-3 gap-2 sm:grid-cols-6"></div>
+          </div>
+
+          <div id="emptyBenchCard" class="surface-deep rounded-xl p-4">
+            <div id="familyBenchNote">
+              <p class="text-xs font-medium text-primary">Family Safe mode active</p>
+              <p class="mt-1 text-xs leading-relaxed text-secondary">
+                Load any of the 8 sample cases, attach a screenshot, or paste a suspicious message to get a clear verdict and spoken guidance.
+              </p>
+            </div>
+            <div id="socBenchNote" class="hidden font-mono">
+              <p class="text-xs font-medium text-primary">SOC Analyst mode active</p>
+              <p class="mt-1 text-xs leading-relaxed text-secondary">
+                Outputs show resolved host details, header audit, redirect chain, extracted form fields, and JSON IOC export.
+              </p>
+            </div>
+          </div>
+
+          <!-- Recent Scans Snapshot (fills space with live data) -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-medium text-secondary">Latest checks</span>
+              <button type="button" onclick="toggleHistoryDrawer()" class="focus-ring rounded text-xs text-primary underline underline-offset-2">View all</button>
+            </div>
+            <div id="benchRecentList" class="space-y-2"></div>
+          </div>
+
+          <div class="surface-deep flex flex-wrap items-center justify-between gap-2 rounded-xl px-4 py-3 text-xs">
+            <span class="text-secondary">National Cyber Helpline</span>
+            <div class="flex items-center gap-3 font-medium text-primary">
+              <a href="tel:1930" class="focus-ring rounded hover:underline">Dial 1930</a>
+              <a href="https://sancharsaathi.gov.in" target="_blank" rel="noopener noreferrer" class="focus-ring rounded underline underline-offset-2">Chakshu</a>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- RESULTS WORKBENCH -->
+    <section id="resultsPanel" aria-live="polite" class="mt-10 hidden space-y-6">
+      <div id="criticalAlertBanner" class="surface-card hidden rounded-2xl p-5" style="border-left: 2px solid var(--bad);">
+        <div class="flex items-center gap-2">
+          <svg class="h-4 w-4 shrink-0" style="color: var(--bad);" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span id="criticalAlertTag" class="font-mono text-xs font-medium text-secondary">Critical security intercept</span>
+        </div>
+        <h2 id="criticalAlertTitle" class="mt-2 text-lg font-medium text-primary"></h2>
+        <p id="criticalAlertDetail" class="mt-1 text-sm text-secondary"></p>
+      </div>
+
+      <div id="piiNoticeBanner" class="surface-card hidden rounded-xl px-4 py-3 text-xs text-primary" style="border-left: 2px solid var(--ok);"></div>
+
+      <div id="spotOutcomeBanner" class="surface-card hidden rounded-xl px-4 py-3 text-sm text-primary"></div>
+
+      <!-- VERDICT HERO WITH CASE TAG & RISK GAUGE -->
+      <div id="verdictCard" class="surface-card rounded-2xl p-6">
+        <div class="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+          <div class="space-y-3">
+            <div class="flex flex-wrap items-center gap-2.5">
+              <span id="caseNumberTag" class="surface-raised rounded-md px-2.5 py-1 font-mono text-xs font-medium text-primary tabular-nums">CASE 0001</span>
+              <span class="text-xs text-muted" data-i18n="verdict_kicker">Scout security verdict</span>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+              <span id="verdictBadge" class="inline-flex items-center rounded-lg px-3.5 py-1.5 text-lg font-medium tracking-tight">DANGEROUS</span>
+              <span id="domainSummaryBadge" class="surface-raised rounded-lg px-3 py-1.5 text-xs text-secondary"></span>
+              <span id="tlsSummaryBadge" class="surface-raised rounded-lg px-3 py-1.5 text-xs text-secondary"></span>
+            </div>
+          </div>
+
+          <div class="surface-deep flex items-center gap-4 self-start rounded-xl px-5 py-3 sm:self-auto">
+            <div class="relative h-20 w-20">
+              <svg class="h-20 w-20 -rotate-90" viewBox="0 0 80 80" aria-hidden="true">
+                <circle cx="40" cy="40" r="32" fill="none" stroke="var(--line)" stroke-width="7" />
+                <circle id="riskGaugeArc" cx="40" cy="40" r="32" fill="none" stroke="var(--bad)" stroke-width="7" stroke-linecap="round" stroke-dasharray="201.06" stroke-dashoffset="201.06" style="transition: stroke-dashoffset 0.8s cubic-bezier(0.22, 1, 0.36, 1), stroke 0.25s ease;" />
+              </svg>
+              <div class="absolute inset-0 flex flex-col items-center justify-center">
+                <span id="riskScoreValue" class="font-mono text-xl font-medium text-primary tabular-nums">0</span>
+                <span class="font-mono text-xs text-muted">/ 100</span>
+              </div>
+            </div>
+            <div>
+              <p class="text-xs font-medium text-primary">Risk score</p>
+              <p id="riskSubtitle" class="mt-0.5 text-xs text-muted">Rule-based transparency</p>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- FAMILY SAFE MODE -->
       <div id="familyView" class="space-y-6">
-        <div class="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+        <!-- VOICE VERDICT PLAYER -->
+        <div class="surface-card rounded-2xl p-6">
           <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 class="text-lg font-bold text-white">Listen to Calm Voice Verdict</h2>
-              <p id="audioSourceLabel" class="text-xs text-slate-400">Audio summary ready</p>
+            <div class="flex items-center gap-3.5">
+              <div id="voiceWaveform" class="surface-raised flex h-11 w-11 items-center justify-center gap-1 rounded-xl px-2">
+                <span class="wave-bar h-4 w-1 rounded-full" style="background-color: var(--ok);"></span>
+                <span class="wave-bar h-6 w-1 rounded-full" style="background-color: var(--ok);"></span>
+                <span class="wave-bar h-3 w-1 rounded-full" style="background-color: var(--ok);"></span>
+                <span class="wave-bar h-5 w-1 rounded-full" style="background-color: var(--ok);"></span>
+                <span class="wave-bar h-3 w-1 rounded-full" style="background-color: var(--ok);"></span>
+              </div>
+              <div>
+                <h2 class="text-base font-medium text-primary" data-i18n="voice_title">Calm voice verdict</h2>
+                <p id="audioSourceLabel" class="text-xs text-muted">Audio summary ready</p>
+              </div>
             </div>
-            <button id="playAudioBtn" type="button" onclick="toggleVoicePlayback()" class="inline-flex items-center gap-2 rounded-xl bg-emerald-400 px-5 py-3 text-sm font-extrabold text-slate-950 transition hover:bg-emerald-300">
-              <span id="playAudioLabel">Play Voice Verdict</span>
-            </button>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="speedToggleBtn" type="button" onclick="toggleSpeechSpeed()" class="focus-ring surface-raised min-h-[44px] rounded-lg px-3 py-2 font-mono text-xs font-medium text-primary transition-colors hover:opacity-90" title="Toggle playback speed">1.0x</button>
+              <button id="playAudioBtn" type="button" onclick="toggleVoicePlayback()" class="focus-ring inline-flex min-h-[44px] items-center gap-2 rounded-lg px-4 py-2 text-xs font-medium transition-colors" style="background-color: var(--text); color: var(--bg);">
+                <span id="playAudioLabel">Play voice verdict</span>
+              </button>
+            </div>
           </div>
           <audio id="elevenLabsAudio" controls class="mt-4 hidden w-full rounded-lg"></audio>
-          <blockquote id="voiceScriptText" class="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4 text-base leading-relaxed text-slate-100"></blockquote>
+          <blockquote id="voiceScriptText" class="lang-indic surface-deep mt-4 rounded-xl p-4 text-sm text-primary sm:text-base"></blockquote>
         </div>
 
-        <div class="rounded-2xl border border-indigo-500/30 bg-slate-900 p-6 shadow-xl">
+        <!-- AI VISION & PSYCHOLOGY -->
+        <div class="surface-card rounded-2xl p-6">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h2 class="text-lg font-bold text-white">AI Visual &amp; Scam Psychology Breakdown</h2>
-              <p id="visionSourceLabel" class="text-xs text-indigo-300"></p>
+              <h2 class="text-base font-medium text-primary" data-i18n="vision_title">Visual and manipulation analysis</h2>
+              <p id="visionSourceLabel" class="mt-0.5 text-xs text-secondary"></p>
             </div>
-            <span id="brandSpoofPill" class="hidden rounded-full border border-rose-500/50 bg-rose-500/20 px-3 py-1 text-xs font-bold text-rose-200"></span>
+            <span id="brandSpoofPill" class="surface-raised hidden rounded-lg px-3 py-1 text-xs font-medium text-primary" style="border-left: 2px solid var(--bad);"></span>
           </div>
-          <p id="visionVerdictText" class="mt-3 rounded-xl border border-slate-800 bg-slate-950 p-3.5 text-sm leading-relaxed text-slate-200"></p>
+          <p id="visionVerdictText" class="surface-deep mt-3 rounded-xl p-4 text-sm leading-relaxed text-primary"></p>
           <div id="tacticsGrid" class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"></div>
         </div>
 
+        <!-- EVIDENCE & NEXT STEPS -->
         <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <div class="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
-            <h2 class="text-lg font-bold text-white">Why we flagged this</h2>
-            <ul id="evidenceList" class="mt-4 space-y-3 text-sm leading-relaxed text-slate-200"></ul>
+          <div class="surface-card rounded-2xl p-6">
+            <h2 class="text-base font-medium text-primary" data-i18n="evidence_title">Why this was flagged</h2>
+            <ul id="evidenceList" class="mt-4 space-y-3 text-sm leading-relaxed text-primary"></ul>
           </div>
 
-          <div id="nextStepsCard" class="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+          <div id="nextStepsCard" class="surface-card rounded-2xl p-6">
             <div class="flex items-center justify-between gap-2">
-              <h2 class="text-lg font-bold text-white">What to do next</h2>
-              <button type="button" onclick="openDamageControl()" class="rounded-lg border border-rose-500/50 bg-rose-500/20 px-3 py-1.5 text-xs font-bold text-rose-200 transition hover:bg-rose-500/35">I Already Clicked It!</button>
+              <h2 class="text-base font-medium text-primary" data-i18n="next_title">What to do next</h2>
+              <button type="button" onclick="openDamageControl()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium text-primary transition-colors">Already clicked</button>
             </div>
-            <div id="nextStepsBody" class="mt-4 space-y-3 text-sm leading-relaxed text-slate-200"></div>
+            <div id="nextStepsBody" class="mt-4 space-y-3 text-sm leading-relaxed text-primary"></div>
           </div>
         </div>
 
-        <div class="rounded-2xl border border-sky-500/30 bg-slate-900 p-6 shadow-xl">
-          <h2 class="text-lg font-bold text-white">Instant Action Kit</h2>
-          <p class="mt-1 text-xs text-slate-400">Defanged URLs &amp; PII-scrubbed evidence ready for official reporting or warning your family.</p>
+        <!-- INSTANT ACTION KIT -->
+        <div class="surface-card rounded-2xl p-6">
+          <h2 class="text-base font-medium text-primary" data-i18n="action_title">Action kit</h2>
+          <p class="mt-1 text-xs text-muted">Defanged addresses and redacted evidence ready for reporting or sharing with family.</p>
           <div class="mt-4 grid grid-cols-1 gap-5 lg:grid-cols-2">
-            <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
-              <div class="flex items-center justify-between gap-2">
-                <h3 class="text-sm font-bold text-sky-300">1-Click 1930 / Chakshu Complaint</h3>
-                <button id="copyComplaintBtn" type="button" onclick="copyText('complaintPreview', 'copyComplaintBtn', 'Copy Complaint')" class="rounded-lg bg-sky-400 px-3 py-1.5 text-xs font-extrabold text-slate-950 hover:bg-sky-300">Copy Complaint</button>
-              </div>
-              <pre id="complaintPreview" class="mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-lg border border-slate-800 bg-black/50 p-3 font-mono text-[11px] leading-relaxed text-slate-300"></pre>
-            </div>
-
-            <div class="rounded-xl border border-slate-800 bg-slate-950 p-4">
+            <div class="surface-deep rounded-xl p-4">
               <div class="flex flex-wrap items-center justify-between gap-2">
-                <h3 class="text-sm font-bold text-emerald-300">WhatsApp Family Safety Alert</h3>
-                <div class="flex gap-2">
-                  <button id="copyWaBtn" type="button" onclick="copyText('whatsappPreview', 'copyWaBtn', 'Copy Alert')" class="rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-200 hover:bg-emerald-500/30">Copy Alert</button>
-                  <button type="button" onclick="downloadFamilySafetyCard()" class="rounded-lg bg-emerald-400 px-3 py-1.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-300">Download PNG Card</button>
+                <h3 class="text-sm font-medium text-primary">1930 / Chakshu incident draft</h3>
+                <div class="flex flex-wrap gap-2">
+                  <button type="button" onclick="openOfficialReport()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium text-primary">Official dossier</button>
+                  <button id="copyComplaintBtn" type="button" onclick="copyText('complaintPreview', 'copyComplaintBtn', 'Copy complaint')" class="focus-ring min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium" style="background-color: var(--text); color: var(--bg);">Copy complaint</button>
                 </div>
               </div>
-              <p id="whatsappPreview" class="mt-3 rounded-lg border border-slate-800 bg-black/50 p-3 text-xs leading-relaxed text-slate-200"></p>
+              <pre id="complaintPreview" class="surface-card mt-3 max-h-44 overflow-auto whitespace-pre-wrap rounded-lg p-3 font-mono text-xs leading-relaxed text-secondary"></pre>
+            </div>
+
+            <div class="surface-deep rounded-xl p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <h3 class="text-sm font-medium text-primary">Family safety alert</h3>
+                <div class="flex flex-wrap gap-2">
+                  <button id="copyWaBtn" type="button" onclick="copyText('whatsappPreview', 'copyWaBtn', 'Copy alert')" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium text-primary">Copy alert</button>
+                  <button type="button" onclick="downloadFamilySafetyCard()" class="focus-ring min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium" style="background-color: var(--text); color: var(--bg);">Download shield card</button>
+                </div>
+              </div>
+              <p id="whatsappPreview" class="surface-card mt-3 rounded-lg p-3 text-xs leading-relaxed text-secondary"></p>
             </div>
           </div>
         </div>
 
-        <div class="rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
-          <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+        <!-- SPECIMEN CAPTURE & REDIRECT TRAIL -->
+        <div class="surface-card rounded-2xl p-6">
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 class="text-lg font-bold text-white">Visual Proof &amp; Safe Redirect Trail</h2>
-              <p id="pageTitleLine" class="text-xs text-slate-400"></p>
+              <h2 class="text-base font-medium text-primary">Sandbox specimen and redirect trail</h2>
+              <p id="pageTitleLine" class="mt-0.5 text-xs text-muted"></p>
             </div>
-            <span id="finalUrlPill" class="mt-2 inline-block max-w-full truncate rounded-lg border border-slate-700 bg-slate-950 px-3 py-1 font-mono text-xs text-sky-300 sm:mt-0"></span>
+            <span id="finalUrlPill" class="surface-deep inline-block max-w-full truncate rounded-lg px-3 py-1 font-mono text-xs text-accent"></span>
           </div>
           <div class="mt-5 grid grid-cols-1 gap-6 lg:grid-cols-5">
             <div class="lg:col-span-2">
-              <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Defanged Redirect Hops</p>
-              <ol id="redirectChainList" class="space-y-2"></ol>
-              <p id="intelNote" class="mt-4 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs text-slate-400"></p>
+              <p class="mb-3 text-xs font-medium text-secondary">Defanged redirect timeline</p>
+              <ol id="redirectChainList" class="relative space-y-3 pl-4" style="border-left: 1px solid var(--line);"></ol>
+              <p id="intelNote" class="surface-deep mt-4 rounded-lg px-3 py-2 text-xs text-muted"></p>
             </div>
             <div class="lg:col-span-3">
-              <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-400">Static Mobile Sandbox Screenshot (Non-Interactive)</p>
-              <div class="overflow-hidden rounded-xl border border-slate-700 bg-slate-950">
-                <img id="sandboxScreenshot" alt="Sandboxed webpage screenshot" class="mx-auto hidden max-h-[420px] object-contain" />
-                <div id="screenshotFallback" class="hidden p-8 text-center text-sm text-slate-400"></div>
+              <div class="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <p class="text-xs font-medium text-secondary">Non-interactive mobile capture</p>
+                <div class="flex items-center gap-2">
+                  <button id="toggleBlurBtn" type="button" onclick="toggleScreenshotBlur()" class="focus-ring surface-raised hidden min-h-[36px] rounded-lg px-3 py-1 text-xs font-medium text-primary">Reveal preview</button>
+                  <button id="zoomScreenshotBtn" type="button" onclick="openScreenshotModal()" class="focus-ring surface-raised hidden min-h-[36px] rounded-lg px-3 py-1 text-xs font-medium text-primary">Inspect full size</button>
+                </div>
+              </div>
+              <div class="surface-deep relative overflow-hidden rounded-xl p-3">
+                <div class="mb-2 flex items-center justify-between text-xs text-muted">
+                  <span id="specimenTagLabel" class="font-mono">SPECIMEN</span>
+                  <span class="font-mono">390x844 · Android</span>
+                </div>
+                <img id="sandboxScreenshot" loading="lazy" alt="Sandboxed webpage screenshot" onclick="openScreenshotModal()" class="mx-auto hidden max-h-[420px] cursor-pointer rounded-lg object-contain blur-md transition-[filter,opacity] duration-300" />
+                <div id="screenshotBlurOverlay" class="pointer-events-none absolute inset-0 hidden flex-col items-center justify-center bg-black/45 text-center">
+                  <span class="surface-card rounded-lg px-3.5 py-1.5 text-xs font-medium text-primary">Blurred for safety — select Reveal preview</span>
+                </div>
+                <div id="screenshotFallback" class="hidden p-8 text-center text-sm text-muted"></div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- SOC ANALYST TERMINAL VIEW -->
+      <!-- SOC ANALYST WORKBENCH -->
       <div id="socView" class="hidden space-y-5 font-mono">
-        <div class="rounded-2xl border border-emerald-500/40 bg-black/90 p-5 shadow-2xl">
-          <p class="text-xs font-bold uppercase tracking-widest text-emerald-400">&gt; ENTERPRISE_SANDBOX_TELEMETRY</p>
-          <div id="socSecurityGrid" class="mt-3 grid grid-cols-1 gap-3 text-xs sm:grid-cols-3"></div>
+        <div class="surface-card flex flex-wrap items-center justify-between gap-3 rounded-2xl p-5" style="border-left: 2px solid var(--accent);">
+          <div>
+            <p class="text-xs font-medium text-primary">Analyst telemetry · Route protection · Mobile profile</p>
+            <p class="mt-1 text-xs text-muted">Redacted payload · Evidence integrity hash</p>
+          </div>
+          <button id="copyIocJsonBtn" type="button" onclick="copyIocBundle()" class="focus-ring surface-raised min-h-[40px] rounded-lg px-3.5 py-1.5 text-xs font-medium text-primary">Copy IOC bundle (JSON)</button>
+        </div>
+
+        <div id="socSecurityGrid" class="grid grid-cols-1 gap-3 text-xs sm:grid-cols-3"></div>
+
+        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <div class="surface-card rounded-2xl p-5">
+            <p class="text-xs font-medium text-primary">Network, certificate, and reputation</p>
+            <div id="socNetworkDump" class="mt-3 space-y-1.5 text-xs text-secondary"></div>
+            <div id="socHeuristicsBox" class="mt-3 space-y-1 text-xs"></div>
+          </div>
+          <div class="surface-card rounded-2xl p-5">
+            <p class="text-xs font-medium text-primary">Security headers audit</p>
+            <div id="socHeaderBadges" class="mt-3 flex flex-wrap gap-2"></div>
+            <pre id="socHeadersDump" class="surface-deep mt-3 max-h-44 overflow-auto rounded-lg p-3 text-xs leading-relaxed text-secondary"></pre>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <div class="rounded-2xl border border-cyan-500/30 bg-black/90 p-5">
-            <p class="text-xs font-bold uppercase tracking-widest text-cyan-400">&gt; NETWORK_AND_THREAT_INTEL</p>
-            <div id="socNetworkDump" class="mt-3 space-y-1.5 text-xs text-slate-300"></div>
-          </div>
-          <div class="rounded-2xl border border-cyan-500/30 bg-black/90 p-5">
-            <p class="text-xs font-bold uppercase tracking-widest text-cyan-400">&gt; HTTP_RESPONSE_HEADERS</p>
-            <pre id="socHeadersDump" class="mt-3 max-h-48 overflow-auto text-[11px] leading-relaxed text-emerald-300"></pre>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 gap-5 lg:grid-cols-2">
-          <div class="rounded-2xl border border-emerald-500/30 bg-black/90 p-5">
-            <p class="text-xs font-bold uppercase tracking-widest text-emerald-400">&gt; DEFANGED_REDIRECT_GRAPH</p>
+          <div class="surface-card rounded-2xl p-5">
+            <p class="text-xs font-medium text-primary">Defanged redirect graph</p>
             <div id="socRedirectGraph" class="mt-3 space-y-2 text-xs"></div>
           </div>
-          <div class="rounded-2xl border border-emerald-500/30 bg-black/90 p-5">
-            <p class="text-xs font-bold uppercase tracking-widest text-emerald-400">&gt; RISK_SCORING_RULES</p>
+          <div class="surface-card rounded-2xl p-5">
+            <p class="text-xs font-medium text-primary">Risk scoring rules</p>
             <div id="socScoreRules" class="mt-3 space-y-1.5 text-xs"></div>
           </div>
         </div>
 
-        <div class="rounded-2xl border border-amber-500/30 bg-black/90 p-5">
-          <p class="text-xs font-bold uppercase tracking-widest text-amber-400">&gt; DOM_FORM_INPUT_EXTRACTION</p>
-          <pre id="socDomDump" class="mt-3 max-h-56 overflow-auto text-[11px] leading-relaxed text-amber-200"></pre>
+        <div class="surface-card rounded-2xl p-5">
+          <p class="text-xs font-medium text-primary">Captured form fields</p>
+          <div id="socDomTableWrap" class="mt-3 overflow-x-auto"></div>
         </div>
 
-        <div class="rounded-2xl border border-slate-700 bg-black/90 p-5 text-xs text-slate-300">
-          <p class="font-bold uppercase tracking-widest text-sky-400">&gt; FORENSIC_EVIDENCE_INTEGRITY</p>
-          <p class="mt-2 break-all"><span class="text-slate-500">SCREENSHOT_SHA256:</span> <span id="socSha256" class="text-emerald-300"></span></p>
-          <p class="mt-1 break-all"><span class="text-slate-500">REDACTED_MESSAGE:</span> <span id="socRedactedMsg" class="text-slate-200"></span></p>
+        <div class="surface-card rounded-2xl p-5 text-xs text-secondary">
+          <p class="font-medium text-primary">Evidence integrity</p>
+          <p class="mt-2 break-all"><span class="text-muted">Capture hash:</span> <span id="socSha256" class="text-primary"></span></p>
+          <p class="mt-1 break-all"><span class="text-muted">Redacted message:</span> <span id="socRedactedMsg" class="text-primary"></span></p>
         </div>
       </div>
     </section>
+
+    <!-- BELOW THE FOLD: HOW YOUR MESSAGE WORKS (VISUAL FLOW DIAGRAM) -->
+    <section id="howItWorks" class="mt-12 pt-8">
+      <div class="mb-6">
+        <h2 class="text-2xl font-medium tracking-tight text-primary">How your message is checked</h2>
+        <p class="mt-1 text-sm text-secondary">What happens from the moment you paste a link until you hear the verdict.</p>
+      </div>
+
+      <!-- Interactive Visual Flow Diagram -->
+      <div class="surface-card rounded-2xl p-6">
+        <div class="grid grid-cols-1 items-center gap-4 lg:grid-cols-7" role="tablist" aria-label="Message inspection steps">
+          <button type="button" role="tab" onclick="selectFlowStep(0)" id="flowStepBtn-0" class="focus-ring surface-deep rounded-xl p-4 text-left transition-colors lg:col-span-1" style="border-left: 2px solid var(--accent);">
+            <p class="text-xs font-medium text-muted">Step 1</p>
+            <p class="mt-1 text-sm font-medium text-primary">Your message</p>
+            <p class="mt-1 text-xs text-secondary">Paste any SMS, forward, or image.</p>
+          </button>
+
+          <div class="hidden justify-center text-muted lg:flex" aria-hidden="true">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </div>
+
+          <button type="button" role="tab" onclick="selectFlowStep(1)" id="flowStepBtn-1" class="focus-ring surface-deep rounded-xl p-4 text-left transition-colors lg:col-span-1" style="border-left: 2px solid transparent;">
+            <p class="text-xs font-medium text-muted">Step 2</p>
+            <p class="mt-1 text-sm font-medium text-primary">Privacy shield</p>
+            <p class="mt-1 text-xs text-secondary">Personal numbers are hidden.</p>
+          </button>
+
+          <div class="hidden justify-center text-muted lg:flex" aria-hidden="true">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </div>
+
+          <button type="button" role="tab" onclick="selectFlowStep(2)" id="flowStepBtn-2" class="focus-ring surface-deep rounded-xl p-4 text-left transition-colors lg:col-span-1" style="border-left: 2px solid transparent;">
+            <p class="text-xs font-medium text-muted">Step 3</p>
+            <p class="mt-1 text-sm font-medium text-primary">Safe preview room</p>
+            <p class="mt-1 text-xs text-secondary">Opens away from your phone.</p>
+          </button>
+
+          <div class="hidden justify-center text-muted lg:flex" aria-hidden="true">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </div>
+
+          <button type="button" role="tab" onclick="selectFlowStep(3)" id="flowStepBtn-3" class="focus-ring surface-deep rounded-xl p-4 text-left transition-colors lg:col-span-1" style="border-left: 2px solid transparent;">
+            <p class="text-xs font-medium text-muted">Step 4</p>
+            <p class="mt-1 text-sm font-medium text-primary">Verdict and voice</p>
+            <p class="mt-1 text-xs text-secondary">Risk score and 1930 report.</p>
+          </button>
+        </div>
+
+        <!-- Interactive Step Detail Panel -->
+        <div id="flowStepDetail" class="surface-deep mt-4 rounded-xl p-4" style="border-left: 2px solid var(--accent);">
+          <p id="flowDetailTitle" class="text-sm font-medium text-primary">Step 1: You share the suspicious message or screenshot</p>
+          <p id="flowDetailDesc" class="mt-1 text-xs leading-relaxed text-secondary">Nothing is opened on your phone or laptop. We only read the text or image you submit to find links and warning signs.</p>
+          <p id="flowDetailExample" class="mt-2 font-mono text-xs text-muted">Example: "Your electricity meter will be disconnected tonight. Verify at hxxp://example[.]com"</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- BELOW THE FOLD: CASE-FILE GALLERY -->
+    <section id="caseGallery" class="mt-10 pt-8">
+      <div class="mb-5">
+        <h2 class="text-2xl font-medium tracking-tight text-primary">Reference case files</h2>
+        <p class="mt-1 text-sm text-secondary">Safe local simulations you can load into the bench at any time.</p>
+      </div>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <article class="surface-card flex flex-col justify-between rounded-2xl p-5">
+          <div>
+            <h3 class="text-base font-medium text-primary">Electricity KYC disconnection</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-secondary">Simulates a 302 redirect to a fake utility portal requesting mobile, UPI PIN, and OTP.</p>
+          </div>
+          <button type="button" onclick="applyPreset('bescom'); window.scrollTo({top:0, behavior:'smooth'})" class="focus-ring surface-raised mt-4 min-h-[40px] w-full rounded-lg px-3 py-2 text-xs font-medium text-primary">Load case</button>
+        </article>
+        <article class="surface-card flex flex-col justify-between rounded-2xl p-5">
+          <div>
+            <h3 class="text-base font-medium text-primary">Drive-by APK trojan</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-secondary">Triggers an automatic Android package download that the sandbox intercepts and aborts.</p>
+          </div>
+          <button type="button" onclick="applyPreset('apk'); window.scrollTo({top:0, behavior:'smooth'})" class="focus-ring surface-raised mt-4 min-h-[40px] w-full rounded-lg px-3 py-2 text-xs font-medium text-primary">Load case</button>
+        </article>
+        <article class="surface-card flex flex-col justify-between rounded-2xl p-5">
+          <div>
+            <h3 class="text-base font-medium text-primary">Blocked URI scheme</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-secondary">Tests the SSRF guard with a non-HTTP scheme rejected before browser launch.</p>
+          </div>
+          <button type="button" onclick="applyPreset('ssrf'); window.scrollTo({top:0, behavior:'smooth'})" class="focus-ring surface-raised mt-4 min-h-[40px] w-full rounded-lg px-3 py-2 text-xs font-medium text-primary">Load case</button>
+        </article>
+        <article class="surface-card flex flex-col justify-between rounded-2xl p-5">
+          <div>
+            <h3 class="text-base font-medium text-primary">Trusted public domain</h3>
+            <p class="mt-1.5 text-sm leading-relaxed text-secondary">Verifies a clean public site with valid TLS and zero credential prompts.</p>
+          </div>
+          <button type="button" onclick="applyPreset('safe'); window.scrollTo({top:0, behavior:'smooth'})" class="focus-ring surface-raised mt-4 min-h-[40px] w-full rounded-lg px-3 py-2 text-xs font-medium text-primary">Load case</button>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER-13 STYLE STRUCTURED FOOTER WITH HORIZON SILHOUETTE -->
+  <footer class="mt-12 overflow-hidden" style="background-color: var(--surface); border-top: 1px solid var(--line);">
+    <div class="mx-auto max-w-[1440px] px-4 pt-10 pb-6 sm:px-6 lg:px-8">
+      <div class="grid grid-cols-1 gap-10 lg:grid-cols-12">
+        <!-- Left Brand Summary -->
+        <div class="lg:col-span-4 space-y-3">
+          <p class="text-base font-medium text-primary">Scam SOC Crew</p>
+          <p class="max-w-sm text-sm leading-relaxed text-secondary">
+            Check suspicious SMS, WhatsApp forwards, and web links inside an isolated browser before anyone in your family clicks them.
+          </p>
+          <div class="pt-1 flex flex-wrap items-center gap-2">
+            <a href="tel:1930" class="focus-ring surface-raised inline-flex min-h-[36px] items-center rounded-lg px-3 py-1.5 text-xs font-medium text-primary">Call 1930 Helpline</a>
+            <button type="button" onclick="openDamageControl()" class="focus-ring surface-raised inline-flex min-h-[36px] items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-primary"><span class="inline-block h-2 w-2 rounded-full" style="background-color: var(--bad);"></span><span>Emergency SOS</span></button>
+          </div>
+        </div>
+
+        <!-- Right 4 Columns (every item opens a readable page/view) -->
+        <div class="lg:col-span-8 grid grid-cols-2 gap-8 sm:grid-cols-4">
+          <div class="space-y-2.5">
+            <h3 class="text-xs font-medium text-primary">Sandbox tools</h3>
+            <ul class="space-y-2 text-xs text-secondary">
+              <li><button type="button" onclick="openLegalModal('inspector')" class="focus-ring rounded text-left hover:text-primary">Link inspector</button></li>
+              <li><button type="button" onclick="openLegalModal('family')" class="focus-ring rounded text-left hover:text-primary">Family safe view</button></li>
+              <li><button type="button" onclick="openLegalModal('soc')" class="focus-ring rounded text-left hover:text-primary">SOC analyst view</button></li>
+              <li><button type="button" onclick="openLegalModal('cases')" class="focus-ring rounded text-left hover:text-primary">Reference cases</button></li>
+            </ul>
+          </div>
+
+          <div class="space-y-2.5">
+            <h3 class="text-xs font-medium text-primary">Product</h3>
+            <ul class="space-y-2 text-xs text-secondary">
+              <li><button type="button" onclick="openLegalModal('how')" class="focus-ring rounded text-left hover:text-primary">How it works</button></li>
+              <li><button type="button" onclick="openLegalModal('languages')" class="focus-ring rounded text-left hover:text-primary">25 voice languages</button></li>
+              <li><button type="button" onclick="openLegalModal('sos')" class="focus-ring rounded text-left hover:text-primary">Emergency SOS guide</button></li>
+              <li><button type="button" onclick="toggleHelpDrawer()" class="focus-ring rounded text-left hover:text-primary">Help and FAQ</button></li>
+            </ul>
+          </div>
+
+          <div class="space-y-2.5">
+            <h3 class="text-xs font-medium text-primary">Trust and compliance</h3>
+            <ul class="space-y-2 text-xs text-secondary">
+              <li><button type="button" onclick="openLegalModal('terms')" class="focus-ring rounded text-left hover:text-primary">Terms and conditions</button></li>
+              <li><button type="button" onclick="openLegalModal('privacy')" class="focus-ring rounded text-left hover:text-primary">Privacy policy</button></li>
+              <li><button type="button" onclick="openLegalModal('dpdp')" class="focus-ring rounded text-left hover:text-primary">Privacy redaction</button></li>
+              <li><button type="button" onclick="openLegalModal('accessibility')" class="focus-ring rounded text-left hover:text-primary">Accessibility</button></li>
+            </ul>
+          </div>
+
+          <div class="space-y-2.5">
+            <h3 class="text-xs font-medium text-primary">Your choices</h3>
+            <ul class="space-y-2 text-xs text-secondary">
+              <li><button type="button" onclick="openLegalModal('choices')" class="focus-ring rounded text-left underline underline-offset-2 hover:text-primary">Manage local data</button></li>
+              <li><button type="button" onclick="openLegalModal('reporting')" class="focus-ring rounded text-left hover:text-primary">1930 and Chakshu</button></li>
+              <li><a href="https://cybercrime.gov.in" target="_blank" rel="noopener noreferrer" class="focus-ring rounded hover:text-primary">cybercrime.gov.in</a></li>
+              <li><a href="https://sancharsaathi.gov.in" target="_blank" rel="noopener noreferrer" class="focus-ring rounded hover:text-primary">sancharsaathi.gov.in</a></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-8 flex flex-col gap-3 pt-6 text-xs text-muted sm:flex-row sm:items-center sm:justify-between" style="border-top: 1px solid var(--line);">
+        <p>© 2026 Scam SOC Crew. Safe link inspection for families and analysts.</p>
+        <div class="flex flex-wrap items-center gap-4">
+          <button type="button" onclick="openLegalModal('privacy')" class="focus-ring rounded hover:text-primary">Privacy</button>
+          <button type="button" onclick="openLegalModal('terms')" class="focus-ring rounded hover:text-primary">Terms</button>
+          <button type="button" onclick="openLegalModal('accessibility')" class="focus-ring rounded hover:text-primary">Accessibility</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 Animated Waves in Shades of Black + Back to Top -->
+    <div class="relative mt-2 h-28 w-full select-none overflow-hidden">
+      <svg class="footer-wave-c absolute -left-8 bottom-0 h-28 w-[calc(100%+64px)]" viewBox="0 0 1440 110" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,42 C240,12 480,72 720,38 C960,8 1200,64 1440,32 L1440,110 L0,110 Z" fill="#222225" />
+      </svg>
+      <svg class="footer-wave-b absolute -left-8 bottom-0 h-24 w-[calc(100%+64px)]" viewBox="0 0 1440 96" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,48 C300,18 600,76 900,40 C1140,14 1300,56 1440,38 L1440,96 L0,96 Z" fill="#161618" />
+      </svg>
+      <svg class="footer-wave-a absolute -left-8 bottom-0 h-20 w-[calc(100%+64px)]" viewBox="0 0 1440 80" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0,44 C320,66 640,18 960,48 C1160,64 1320,34 1440,46 L1440,80 L0,80 Z" fill="#0b0b0c" />
+      </svg>
+      <div class="relative z-10 flex h-full items-center justify-center pt-4">
+        <button type="button" onclick="window.scrollTo({top:0, behavior:'smooth'})" class="focus-ring inline-flex min-h-[36px] items-center gap-1.5 rounded-full bg-[#1a1a1d] px-4 py-1.5 text-xs font-medium text-[#ececee] shadow-sm" style="border: 1px solid rgba(255,255,255,0.14);">
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>
+          <span>Back to top</span>
+        </button>
+      </div>
+    </div>
+  </footer>
+
+  <!-- OFFICIAL GOVERNMENT INCIDENT DOSSIER MODAL (Printable) -->
+  <div id="officialReportModal" role="dialog" aria-modal="true" aria-labelledby="officialReportTitle" onclick="if(event.target===this)closeOfficialReport()" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-4">
+    <div class="surface-card max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl p-6">
+      <div class="flex flex-wrap items-start justify-between gap-4 pb-4" style="border-bottom: 1px solid var(--line);">
+        <div>
+          <p class="font-mono text-xs text-muted">ANNEXURE A · CYBERCRIME INCIDENT RECORD (1930 / CHAKSHU)</p>
+          <h2 id="officialReportTitle" class="mt-1 text-lg font-medium text-primary">Official Suspicious Communication Dossier</h2>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" onclick="window.print()" class="focus-ring min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium" style="background-color: var(--accent); color: var(--accent-ink);">Print / Save PDF</button>
+          <button type="button" onclick="closeOfficialReport()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium text-primary">Close</button>
+        </div>
+      </div>
+      <div id="officialReportBody" class="mt-4 space-y-4 text-xs leading-relaxed text-primary"></div>
+    </div>
   </div>
 
-  <!-- DAMAGE CONTROL MODAL -->
-  <div id="damageControlModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
-    <div class="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-rose-500/50 bg-slate-900 p-6 shadow-2xl">
-      <div class="flex items-start justify-between gap-4">
+  <!-- LEGAL & COMPLIANCE MODAL -->
+  <div id="legalModal" role="dialog" aria-modal="true" aria-labelledby="legalModalTitle" onclick="if(event.target===this)closeLegalModal()" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-4">
+    <div class="surface-card max-h-[85vh] w-full max-w-xl overflow-y-auto rounded-2xl p-6">
+      <div class="flex items-start justify-between gap-4 pb-4" style="border-bottom: 1px solid var(--line);">
         <div>
-          <span class="rounded-md bg-rose-500 px-2.5 py-0.5 text-[11px] font-black uppercase text-white">Emergency Damage Control</span>
-          <h2 class="mt-2 text-xl font-extrabold text-white">Already Clicked the Link? Stay Calm.</h2>
-          <p class="mt-1 text-sm text-slate-300">Tell us what happened so we can give you the exact next steps in your language.</p>
+          <h2 id="legalModalTitle" class="text-lg font-medium text-primary">Terms and conditions</h2>
+          <p id="legalModalSubtitle" class="mt-0.5 text-xs text-muted"></p>
         </div>
-        <button type="button" onclick="closeDamageControl()" class="rounded-lg border border-slate-700 px-2.5 py-1 text-xs font-bold text-slate-300 hover:bg-slate-800">Close</button>
+        <button type="button" onclick="closeLegalModal()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1 text-xs font-medium text-primary">Close</button>
       </div>
-
-      <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <button type="button" onclick="loadEmergencyPlan(true)" class="rounded-xl border border-rose-500/60 bg-rose-500/20 p-4 text-left transition hover:bg-rose-500/35">
-          <p class="text-sm font-extrabold text-rose-200">Yes — I entered OTP / UPI PIN or installed an app</p>
-          <p class="mt-1 text-xs text-rose-100/80">Immediate bank freeze + 1930 golden-hour checklist</p>
-        </button>
-        <button type="button" onclick="loadEmergencyPlan(false)" class="rounded-xl border border-amber-500/60 bg-amber-500/15 p-4 text-left transition hover:bg-amber-500/30">
-          <p class="text-sm font-extrabold text-amber-200">No — I only opened the link</p>
-          <p class="mt-1 text-xs text-amber-100/80">Safe cleanup &amp; sender blocking steps</p>
-        </button>
-      </div>
-
-      <div id="emergencyPlanBox" class="mt-5 hidden space-y-4 rounded-xl border border-slate-700 bg-slate-950 p-4">
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <p id="emergencyPlanTitle" class="text-sm font-bold text-white"></p>
-          <button id="playEmergencyAudioBtn" type="button" onclick="playEmergencyAudio()" class="rounded-lg bg-emerald-400 px-3 py-1.5 text-xs font-extrabold text-slate-950 hover:bg-emerald-300">Play Calm Voice Guide</button>
-        </div>
-        <audio id="emergencyAudioEl" controls class="hidden w-full"></audio>
-        <p id="emergencyScriptText" class="rounded-lg border border-slate-800 bg-slate-900 p-3 text-sm leading-relaxed text-slate-100"></p>
-        <ol id="emergencyStepsList" class="space-y-2 text-xs leading-relaxed text-slate-200"></ol>
+      <div id="legalModalBody" class="mt-4 space-y-3 text-sm leading-relaxed text-secondary"></div>
+      <div id="legalModalActions" class="mt-5 hidden pt-4" style="border-top: 1px solid var(--line);">
+        <button type="button" onclick="clearAllLocalData()" class="focus-ring surface-raised min-h-[40px] rounded-lg px-4 py-2 text-xs font-medium text-primary" style="border-left: 2px solid var(--bad);">Clear all local browser data</button>
       </div>
     </div>
   </div>
 
-  <canvas id="safetyCardCanvas" width="900" height="520" class="hidden"></canvas>
+  <!-- COMMAND MENU MODAL (⌘K) -->
+  <div id="commandMenuModal" role="dialog" aria-modal="true" aria-label="Command menu" onclick="if(event.target===this)closeCommandMenu()" class="fixed inset-0 z-50 hidden items-start justify-center bg-black/70 p-4 pt-20">
+    <div class="surface-card w-full max-w-lg overflow-hidden rounded-2xl shadow-2xl" style="border: 1px solid var(--line);">
+      <div class="p-3" style="border-bottom: 1px solid var(--line);">
+        <input id="commandSearchInput" type="search" oninput="renderCommandItems(this.value)" placeholder="Type a command or language..." class="focus-ring w-full bg-transparent px-2 py-1.5 text-sm text-primary placeholder-[#7e7e86] focus:outline-none" />
+      </div>
+      <div id="commandList" class="max-h-72 space-y-1 overflow-y-auto p-2"></div>
+    </div>
+  </div>
+
+  <!-- DAMAGE CONTROL MODAL -->
+  <div id="damageControlModal" role="dialog" aria-modal="true" aria-labelledby="damageModalTitle" onclick="if(event.target===this)closeDamageControl()" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 p-4">
+    <div class="surface-card max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-2xl p-6">
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <h2 id="damageModalTitle" class="text-xl font-medium text-primary">Already clicked the link? Stay calm.</h2>
+          <p class="mt-1 text-sm text-secondary">Choose what happened to get step-by-step instructions in your language.</p>
+        </div>
+        <button type="button" onclick="closeDamageControl()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1 text-xs font-medium text-primary">Close</button>
+      </div>
+
+      <div class="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button type="button" onclick="loadEmergencyPlan(true)" class="focus-ring surface-deep rounded-xl p-4 text-left transition-colors" style="border-left: 2px solid var(--bad);">
+          <p class="text-sm font-medium text-primary">Entered OTP, UPI PIN, or installed an app</p>
+          <p class="mt-1 text-xs text-secondary">Immediate bank freeze and 1930 golden-hour checklist</p>
+        </button>
+        <button type="button" onclick="loadEmergencyPlan(false)" class="focus-ring surface-deep rounded-xl p-4 text-left transition-colors" style="border-left: 2px solid var(--warn);">
+          <p class="text-sm font-medium text-primary">Only opened the link</p>
+          <p class="mt-1 text-xs text-secondary">Safe cleanup and sender blocking steps</p>
+        </button>
+      </div>
+
+      <div id="emergencyPlanBox" class="surface-deep mt-5 hidden space-y-4 rounded-xl p-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <p id="emergencyPlanTitle" class="text-sm font-medium text-primary"></p>
+          <button id="playEmergencyAudioBtn" type="button" onclick="playEmergencyAudio()" class="focus-ring min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium" style="background-color: var(--text); color: var(--bg);">Play voice guide</button>
+        </div>
+        <audio id="emergencyAudioEl" controls class="hidden w-full"></audio>
+        <p id="emergencyScriptText" class="lang-indic surface-card rounded-lg p-3 text-sm text-primary"></p>
+        <ol id="emergencyStepsList" class="space-y-2 text-xs leading-relaxed text-secondary"></ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREENSHOT LIGHTBOX MODAL -->
+  <div id="screenshotModal" role="dialog" aria-modal="true" aria-label="Full size sandbox capture" onclick="if(event.target===this)closeScreenshotModal()" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/90 p-4">
+    <div class="surface-card relative max-h-[92vh] max-w-2xl overflow-auto rounded-2xl p-4">
+      <div class="mb-3 flex items-center justify-between gap-4">
+        <p class="text-xs font-medium text-secondary">Static sandboxed capture (non-interactive)</p>
+        <button type="button" onclick="closeScreenshotModal()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1 text-xs font-medium text-primary">Close</button>
+      </div>
+      <img id="screenshotModalImg" alt="Zoomed sandbox screenshot" class="mx-auto max-h-[80vh] rounded-lg object-contain" />
+    </div>
+  </div>
+
+  <!-- RECENT SCANS DRAWER (Swipe-to-dismiss enabled) -->
+  <div id="historyDrawer" role="dialog" aria-modal="true" aria-labelledby="historyDrawerTitle" onclick="if(event.target===this)toggleHistoryDrawer()" class="fixed inset-0 z-50 hidden justify-end bg-black/70">
+    <div id="historyDrawerSheet" class="surface-deep flex h-full w-full max-w-md flex-col p-5 transition-transform duration-200" style="border-left: 1px solid var(--line);">
+      <div class="flex items-center justify-between pb-4" style="border-bottom: 1px solid var(--line);">
+        <div>
+          <h2 id="historyDrawerTitle" class="text-base font-medium text-primary">Recent scans</h2>
+          <p class="text-xs text-muted">Stored locally in your browser (defanged URLs only)</p>
+        </div>
+        <div class="flex gap-2">
+          <button type="button" onclick="clearHistory()" class="focus-ring surface-card min-h-[36px] rounded-lg px-3 py-1 text-xs font-medium text-secondary hover:text-primary">Clear</button>
+          <button type="button" onclick="toggleHistoryDrawer()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1 text-xs font-medium text-primary">Close</button>
+        </div>
+      </div>
+      <div id="historyList" class="mt-4 flex-1 space-y-2.5 overflow-y-auto"></div>
+    </div>
+  </div>
+
+  <!-- HELP & SUPPORT DRAWER (Swipe-to-dismiss enabled) -->
+  <div id="helpDrawer" role="dialog" aria-modal="true" aria-labelledby="helpDrawerTitle" onclick="if(event.target===this)toggleHelpDrawer()" class="fixed inset-0 z-50 hidden justify-end bg-black/70">
+    <div id="helpDrawerSheet" class="surface-deep flex h-full w-full max-w-md flex-col p-5 transition-transform duration-200" style="border-left: 1px solid var(--line);">
+      <div class="flex items-center justify-between pb-4" style="border-bottom: 1px solid var(--line);">
+        <div>
+          <h2 id="helpDrawerTitle" class="text-base font-medium text-primary">Help and reporting</h2>
+          <p class="text-xs text-muted">FAQ, official channels, and feedback</p>
+        </div>
+        <button type="button" onclick="toggleHelpDrawer()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1 text-xs font-medium text-primary">Close</button>
+      </div>
+
+      <div class="mt-4 flex-1 space-y-5 overflow-y-auto pr-1">
+        <div>
+          <label for="faqSearchInput" class="block text-xs font-medium text-secondary">Search FAQ</label>
+          <input id="faqSearchInput" type="search" oninput="filterFaq(this.value)" placeholder="Search" class="focus-ring surface-card mt-1.5 w-full rounded-lg px-3 py-2 text-sm text-primary placeholder-[#7e7e86]" />
+          <div id="faqList" class="mt-3 space-y-2.5"></div>
+        </div>
+
+        <div class="surface-card rounded-xl p-4">
+          <h3 class="text-sm font-medium text-primary">Official Indian reporting channels</h3>
+          <ul class="mt-2.5 space-y-2 text-xs text-secondary">
+            <li><strong class="font-medium text-primary">1930</strong> — National Cyber Crime Helpline</li>
+            <li><a href="https://cybercrime.gov.in" target="_blank" rel="noopener noreferrer" class="text-accent underline underline-offset-2">cybercrime.gov.in</a> — National Cyber Crime Reporting Portal</li>
+            <li><a href="https://sancharsaathi.gov.in" target="_blank" rel="noopener noreferrer" class="text-accent underline underline-offset-2">sancharsaathi.gov.in</a> — Chakshu portal for suspected fraud</li>
+          </ul>
+        </div>
+
+        <form onsubmit="submitWrongVerdict(event)" class="surface-card space-y-3 rounded-xl p-4">
+          <h3 class="text-sm font-medium text-primary">Report a wrong verdict</h3>
+          <p class="text-xs text-muted">Saves a local note and opens a pre-filled email draft.</p>
+          <div>
+            <label for="reportUrlInput" class="block text-xs text-secondary">URL or case tag</label>
+            <input id="reportUrlInput" type="text" required placeholder="CASE 0001 or domain" class="focus-ring surface-deep mt-1 w-full rounded-lg px-3 py-2 text-xs text-primary placeholder-[#7e7e86]" />
+          </div>
+          <div>
+            <label for="reportReasonInput" class="block text-xs text-secondary">What looked inaccurate</label>
+            <textarea id="reportReasonInput" rows="2" required placeholder="Expected Safe or Dangerous and why" class="focus-ring surface-deep mt-1 w-full rounded-lg px-3 py-2 text-xs text-primary placeholder-[#7e7e86]"></textarea>
+          </div>
+          <button type="submit" class="focus-ring min-h-[36px] w-full rounded-lg px-3 py-2 text-xs font-medium" style="background-color: var(--text); color: var(--bg);">Save and open email draft</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST WITH OPTIONAL UNDO ACTION -->
+  <div id="scoutToast" role="status" aria-live="polite" class="surface-card fixed bottom-5 right-5 z-50 hidden items-center gap-3 rounded-lg px-4 py-2.5 text-xs font-medium text-primary shadow-xl" style="border: 1px solid var(--line);">
+    <span id="scoutToastMsg"></span>
+    <button id="scoutToastUndo" type="button" class="hidden font-medium text-accent underline underline-offset-2">Undo</button>
+  </div>
+
+  <canvas id="safetyCardCanvas" width="900" height="540" class="hidden"></canvas>
   <script src="/app.js"></script>
 </body>
 </html>

@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import os
 import re
 from typing import Any
 
-import requests
+import httpx
+
+logger = logging.getLogger("scam_soc.vision")
 
 GEMINI_VISION_MODEL = "gemini-2.5-flash"
-GEMINI_TIMEOUT_SECONDS = 15
+GEMINI_TIMEOUT_SECONDS = 15.0
 
 _KNOWN_INDIAN_BRANDS: list[tuple[str, str, str]] = [
     ("bescom", "BESCOM Karnataka", "bescom.karnataka.gov.in"),
@@ -123,11 +127,11 @@ def _heuristic_vision_fallback(
     }
 
 
-def analyze_screenshot_with_vision(
+async def analyze_screenshot_with_vision_async(
     redacted_message: str,
     sandbox_data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Analyze the Playwright screenshot with Gemini Vision for brand spoofing & scam psychology."""
+    """Analyze the Playwright screenshot asynchronously with Gemini Vision for brand spoofing."""
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     screenshot_b64 = sandbox_data.get("screenshot_base64")
 
@@ -176,9 +180,10 @@ def analyze_screenshot_with_vision(
     }
 
     try:
-        resp = requests.post(endpoint, json=payload, timeout=GEMINI_TIMEOUT_SECONDS)
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(endpoint, json=payload, timeout=GEMINI_TIMEOUT_SECONDS)
         if resp.status_code != 200:
-            print(f"[Gemini Vision] HTTP {resp.status_code}: {resp.text[:200]}")
+            logger.warning("Gemini Vision HTTP %s: %s", resp.status_code, resp.text[:200])
             return _heuristic_vision_fallback(redacted_message, sandbox_data)
 
         body = resp.json()
@@ -200,5 +205,13 @@ def analyze_screenshot_with_vision(
             "manipulation_tactics": (parsed.get("manipulation_tactics") or [])[:4],
         }
     except Exception as exc:  # noqa: BLE001
-        print(f"[Gemini Vision] Fallback triggered: {exc}")
+        logger.warning("Gemini Vision fallback triggered: %s", exc)
         return _heuristic_vision_fallback(redacted_message, sandbox_data)
+
+
+def analyze_screenshot_with_vision(
+    redacted_message: str,
+    sandbox_data: dict[str, Any],
+) -> dict[str, Any]:
+    """Synchronous wrapper for analyze_screenshot_with_vision_async."""
+    return asyncio.run(analyze_screenshot_with_vision_async(redacted_message, sandbox_data))

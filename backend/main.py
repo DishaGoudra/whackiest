@@ -3,28 +3,48 @@
 from __future__ import annotations
 
 import asyncio
+import json
+import logging
+import os
 import re
+import time
+from collections import defaultdict, deque
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, AsyncIterator, Awaitable, Callable, Literal
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from pydantic import BaseModel, Field
+from starlette.middleware.base import BaseHTTPMiddleware
 
-from backend.intel import check_threat_intel
-from backend.sandbox import detonate_url
+from backend.intel import check_threat_intel_async
+from backend.sandbox import PLAYWRIGHT_AVAILABLE, browser_pool, detonate_url
 from backend.security import defang_url, redact_pii
 from backend.verdict import (
     build_cybercrime_report,
     build_verdict,
-    generate_voice_audio,
+    generate_voice_audio_async,
     get_emergency_script,
 )
-from backend.vision import analyze_screenshot_with_vision
+from backend.vision import analyze_screenshot_with_vision_async
 
 load_dotenv()
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
+logger = logging.getLogger("scam_soc.api")
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_INDEX = BASE_DIR / "frontend" / "index.html"
@@ -34,28 +54,85 @@ URL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "30"))
+_RATE_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    await browser_pool.startup()
+    try:
+        yield
+    finally:
+        await browser_pool.shutdown()
+
+
 app = FastAPI(
     title="scam-soc-crew",
     description="Hardened Playwright URL detonation sandbox, Gemini Vision & vernacular voice triage API",
-    version="1.0.0",
+    version="2.0.0",
+    lifespan=lifespan,
 )
 
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Attach defensive HTTP security headers to every response."""
+
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+_cors_origins = [
+    origin.strip()
+    for origin in os.getenv("CORS_ORIGINS", "http://127.0.0.1:8000,http://localhost:8000").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
+
+
+def _check_rate_limit(client_ip: str) -> bool:
+    """Return True if within sliding-window rate limit, False if exceeded."""
+    if RATE_LIMIT_PER_MIN <= 0:
+        return True
+    now = time.monotonic()
+    bucket = _RATE_BUCKETS[client_ip]
+    cutoff = now - 60.0
+    while bucket and bucket[0] < cutoff:
+        bucket.popleft()
+    if len(bucket) >= RATE_LIMIT_PER_MIN:
+        return False
+    bucket.append(now)
+    return True
+
+
+SUPPORTED_LANGUAGES = (
+    "en", "hi", "kn", "ta", "te", "ml", "mr", "bn", "gu", "pa",
+    "ur", "ar", "es", "fr", "de", "ja", "ko", "pt", "id", "vi",
+    "tr", "ru", "it", "nl", "pl",
 )
 
 
 class AnalyzeRequest(BaseModel):
-    message: str = Field(..., min_length=1, description="Raw SMS/WhatsApp/email text")
-    language: Literal["en", "kn", "hi"] = Field(default="en", description="Preferred response language code")
+    message: str = Field(default="", max_length=4000, description="Raw SMS/WhatsApp/email text")
+    language: str = Field(default="en", min_length=2, max_length=5, description="Preferred response language code")
+    image_base64: str | None = Field(default=None, max_length=8_000_000, description="Optional uploaded screenshot base64")
 
 
 class EmergencyAudioRequest(BaseModel):
-    language: Literal["en", "kn", "hi"] = Field(default="en")
+    language: str = Field(default="en", min_length=2, max_length=5)
     entered_credentials: bool = Field(default=True)
 
 
@@ -64,6 +141,24 @@ def extract_first_url(message: str) -> str | None:
     if not match:
         return None
     return match.group(1).rstrip(".,!?;:")
+
+
+@app.get("/healthz")
+async def healthz() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.get("/readyz")
+async def readyz() -> JSONResponse:
+    ready = browser_pool.is_ready or not PLAYWRIGHT_AVAILABLE
+    return JSONResponse(
+        status_code=200 if ready else 503,
+        content={
+            "status": "ready" if ready else "degraded",
+            "playwright_installed": PLAYWRIGHT_AVAILABLE,
+            "browser_pool_warm": browser_pool.is_ready,
+        },
+    )
 
 
 @app.get("/", response_class=FileResponse)
@@ -158,10 +253,14 @@ async def mock_bescom_kyc() -> HTMLResponse:
 
 
 @app.post("/api/emergency-audio")
-async def emergency_audio(payload: EmergencyAudioRequest) -> Any:
+async def emergency_audio(payload: EmergencyAudioRequest, request: Request) -> Any:
     """Return soothing emergency damage-control guidance + ElevenLabs audio."""
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_ip):
+        return JSONResponse(status_code=429, content={"error": "Rate limit exceeded. Please wait a minute."})
+
     script = get_emergency_script(payload.language, payload.entered_credentials)
-    audio_b64 = await asyncio.to_thread(generate_voice_audio, script, payload.language)
+    audio_b64 = await generate_voice_audio_async(script, payload.language)
     return {
         "language": payload.language,
         "entered_credentials": payload.entered_credentials,
@@ -170,23 +269,23 @@ async def emergency_audio(payload: EmergencyAudioRequest) -> Any:
     }
 
 
-@app.post("/api/analyze")
-async def analyze_message(payload: AnalyzeRequest) -> Any:
-    """Redacts PII, validates SSRF, detonates in stealth sandbox, runs Vision + Intel, and returns verdict."""
-    extracted_url = extract_first_url(payload.message)
-    if not extracted_url:
-        return JSONResponse(
-            status_code=400,
-            content={
-                "extracted_url": None,
-                "language": payload.language,
-                "error": "No URL found in the provided message.",
-            },
-        )
+async def _run_analysis_pipeline(
+    message: str,
+    language: str,
+    extracted_url: str,
+    on_progress: Callable[[int, str], Awaitable[None]] | None = None,
+) -> dict[str, Any]:
+    """Execute the full SSRF -> Sandbox -> Intel/Vision -> Verdict -> Voice pipeline."""
+    if on_progress:
+        await on_progress(0, "Validating SSRF & scrubbing DPDP PII...")
+    redacted_message, pii_counts = redact_pii(message)
 
-    redacted_message, pii_counts = redact_pii(payload.message)
+    if on_progress:
+        await on_progress(1, "Opening in stealth Android mobile sandbox...")
     sandbox_data = await detonate_url(extracted_url)
 
+    if on_progress:
+        await on_progress(2, "Running Gemini Vision, TLS & Threat Intel...")
     intel_target_url = sandbox_data.get("final_url") or extracted_url
     if sandbox_data.get("ssrf_blocked"):
         intel_data: dict[str, Any] = {
@@ -200,6 +299,8 @@ async def analyze_message(payload: AnalyzeRequest) -> Any:
                 "org": "Internal / Restricted Target",
                 "country": "Restricted",
             },
+            "tls": {"checked": False, "valid": False, "issuer": None, "cert_age_days": None, "note": "Blocked by SSRF Guard"},
+            "url_heuristics": {"flags": [], "risk_points": 0},
             "virustotal": {
                 "checked": False,
                 "malicious": 0,
@@ -217,16 +318,18 @@ async def analyze_message(payload: AnalyzeRequest) -> Any:
             "manipulation_tactics": [],
         }
     else:
-        intel_task = asyncio.to_thread(check_threat_intel, intel_target_url)
-        vision_task = asyncio.to_thread(analyze_screenshot_with_vision, redacted_message, sandbox_data)
+        intel_task = check_threat_intel_async(intel_target_url)
+        vision_task = analyze_screenshot_with_vision_async(redacted_message, sandbox_data)
         intel_data, vision_data = await asyncio.gather(intel_task, vision_task)
 
+    if on_progress:
+        await on_progress(3, "Generating verdict & multilingual voice...")
     verdict_data = build_verdict(
         redacted_message,
         sandbox_data,
         intel_data,
         vision_data,
-        payload.language,
+        language,
     )
     action_kit = build_cybercrime_report(
         redacted_message,
@@ -236,8 +339,7 @@ async def analyze_message(payload: AnalyzeRequest) -> Any:
         vision_data,
         verdict_data,
     )
-    voice_audio_base64 = await asyncio.to_thread(
-        generate_voice_audio,
+    voice_audio_base64 = await generate_voice_audio_async(
         verdict_data["voice_script"],
         verdict_data["language"],
     )
@@ -250,7 +352,7 @@ async def analyze_message(payload: AnalyzeRequest) -> Any:
         "defanged_redirect_chain": defanged_chain,
         "redacted_message": redacted_message,
         "pii_redacted": pii_counts,
-        "language": payload.language,
+        "language": language,
         **sandbox_data,
         "intel": intel_data,
         "vision": vision_data,
@@ -262,3 +364,162 @@ async def analyze_message(payload: AnalyzeRequest) -> Any:
         "voice_script": verdict_data["voice_script"],
         "voice_audio_base64": voice_audio_base64,
     }
+
+
+async def _run_image_only_pipeline(
+    message: str,
+    language: str,
+    image_base64: str,
+    on_progress: Callable[[int, str], Awaitable[None]] | None = None,
+) -> dict[str, Any]:
+    """Analyze an uploaded screenshot directly when no URL was typed."""
+    if on_progress:
+        await on_progress(0, "Scrubbing personal numbers from text...")
+    redacted_message, pii_counts = redact_pii(message or "[Uploaded screenshot]")
+
+    if on_progress:
+        await on_progress(1, "Preparing uploaded image in safe viewer...")
+    raw_b64 = image_base64.split(",", 1)[-1]
+    import hashlib
+    sha256_hash = hashlib.sha256(raw_b64.encode("utf-8")).hexdigest()
+    sandbox_data: dict[str, Any] = {
+        "final_url": "uploaded-image://local-specimen",
+        "redirect_chain": [],
+        "page_title": "Uploaded image specimen",
+        "visible_text_excerpt": redacted_message,
+        "detected_forms": [],
+        "urgency_flags": [],
+        "screenshot_base64": raw_b64,
+        "screenshot_sha256": sha256_hash,
+        "http_status": None,
+        "response_headers": {},
+        "security_headers_audit": {},
+        "dom_inputs": [],
+        "ssrf_blocked": False,
+        "apk_trap": {"detected": False},
+        "security_profile": {"ssrf_guard": "N/A (Image)", "stealth_mobile": "Uploaded Specimen", "permissions": "Denied"},
+    }
+    intel_data: dict[str, Any] = {
+        "domain": "uploaded-image",
+        "domain_age_days": None,
+        "domain_age_summary": "Uploaded image",
+        "network": {"ip": "Local upload", "asn": "N/A", "org": "User uploaded screenshot", "country": "N/A"},
+        "tls": {"checked": False, "valid": True, "note": "Image upload"},
+        "url_heuristics": {"flags": [], "risk_points": 0},
+        "virustotal": {"checked": False, "malicious": 0, "suspicious": 0, "note": "Image upload — no external URL"},
+    }
+
+    if on_progress:
+        await on_progress(2, "Running visual inspection...")
+    vision_data = await analyze_screenshot_with_vision_async(redacted_message, sandbox_data)
+
+    if on_progress:
+        await on_progress(3, "Generating verdict and voice summary...")
+    verdict_data = build_verdict(redacted_message, sandbox_data, intel_data, vision_data, language)
+    action_kit = build_cybercrime_report(redacted_message, "uploaded-image", sandbox_data, intel_data, vision_data, verdict_data)
+    voice_audio_base64 = await generate_voice_audio_async(verdict_data["voice_script"], verdict_data["language"])
+
+    return {
+        "extracted_url": None,
+        "defanged_url": "uploaded-image",
+        "defanged_redirect_chain": [],
+        "redacted_message": redacted_message,
+        "pii_redacted": pii_counts,
+        "language": language,
+        **sandbox_data,
+        "intel": intel_data,
+        "vision": vision_data,
+        "verdict": verdict_data,
+        "action_kit": action_kit,
+        "risk_score": verdict_data["risk_score"],
+        "status": verdict_data["status"],
+        "evidence": verdict_data["evidence"],
+        "voice_script": verdict_data["voice_script"],
+        "voice_audio_base64": voice_audio_base64,
+    }
+
+
+@app.post("/api/analyze")
+async def analyze_message(payload: AnalyzeRequest, request: Request) -> Any:
+    """Redacts PII, validates SSRF, detonates in stealth sandbox, runs Vision + Intel, and returns verdict."""
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_ip):
+        return JSONResponse(status_code=429, content={"error": "Rate limit exceeded. Please wait a minute."})
+
+    extracted_url = extract_first_url(payload.message)
+    if not extracted_url:
+        if payload.image_base64:
+            return await _run_image_only_pipeline(payload.message, payload.language, payload.image_base64)
+        return JSONResponse(
+            status_code=400,
+            content={
+                "extracted_url": None,
+                "language": payload.language,
+                "error": "No URL found in the provided message.",
+            },
+        )
+
+    return await _run_analysis_pipeline(payload.message, payload.language, extracted_url)
+
+
+@app.post("/api/analyze/stream")
+async def analyze_message_stream(payload: AnalyzeRequest, request: Request) -> Any:
+    """Stream real-time pipeline progress events (SSE) followed by the final analysis result."""
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_rate_limit(client_ip):
+        return JSONResponse(status_code=429, content={"error": "Rate limit exceeded. Please wait a minute."})
+
+    extracted_url = extract_first_url(payload.message)
+    if not extracted_url and not payload.image_base64:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "extracted_url": None,
+                "language": payload.language,
+                "error": "No URL found in the provided message.",
+            },
+        )
+
+    queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+    async def _emit_progress(step: int, message: str) -> None:
+        event = json.dumps({"type": "progress", "step": step, "message": message})
+        await queue.put(f"data: {event}\n\n")
+
+    async def _worker() -> None:
+        try:
+            if extracted_url:
+                result = await _run_analysis_pipeline(
+                    payload.message,
+                    payload.language,
+                    extracted_url,
+                    on_progress=_emit_progress,
+                )
+            else:
+                result = await _run_image_only_pipeline(
+                    payload.message,
+                    payload.language,
+                    payload.image_base64 or "",
+                    on_progress=_emit_progress,
+                )
+            await queue.put(f"data: {json.dumps({'type': 'result', 'data': result})}\n\n")
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Streaming analysis failed")
+            await queue.put(f"data: {json.dumps({'type': 'error', 'error': str(exc)})}\n\n")
+        finally:
+            await queue.put(None)
+
+    asyncio.create_task(_worker())
+
+    async def _event_stream() -> AsyncIterator[str]:
+        while True:
+            chunk = await queue.get()
+            if chunk is None:
+                break
+            yield chunk
+
+    return StreamingResponse(
+        _event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

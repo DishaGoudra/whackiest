@@ -1,24 +1,61 @@
-"""Hardened Playwright URL detonation sandbox with Anti-SSRF, Stealth Mobile mode, and APK trap interception."""
+"""Hardened Playwright URL detonation sandbox with Browser Pool, per-hop Route SSRF Guard, and APK trap interception."""
 
 from __future__ import annotations
 
 import asyncio
 import base64
+import logging
 import re
 from typing import Any
 from urllib.parse import urlparse
 
-from playwright.async_api import Page, Response, TimeoutError as PlaywrightTimeoutError, async_playwright
+try:
+    from playwright.async_api import (
+        Browser,
+        Page,
+        Playwright,
+        Response,
+        Route,
+        TimeoutError as PlaywrightTimeoutError,
+        async_playwright,
+    )
+    PLAYWRIGHT_AVAILABLE = True
+except ImportError:  # pragma: no cover - graceful fallback if playwright isn't installed
+    Browser = Any  # type: ignore[misc, assignment]
+    Page = Any  # type: ignore[misc, assignment]
+    Playwright = Any  # type: ignore[misc, assignment]
+    Response = Any  # type: ignore[misc, assignment]
+    Route = Any  # type: ignore[misc, assignment]
+    PlaywrightTimeoutError = TimeoutError  # type: ignore[misc, assignment]
+    async_playwright = None  # type: ignore[assignment]
+    PLAYWRIGHT_AVAILABLE = False
 
 from backend.security import compute_sha256, validate_url_ssrf
 
+logger = logging.getLogger("scam_soc.sandbox")
+
 TIMEOUT_MS = 12_000
 MAX_REDIRECT_HOPS = 5
+MAX_CONCURRENT_SANDBOXES = 4
 
 MOBILE_USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/126.0.6478.122 Mobile Safari/537.36"
 )
+
+CHROMIUM_HARDENED_ARGS = [
+    "--no-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-background-networking",
+    "--disable-default-apps",
+    "--disable-extensions",
+    "--disable-sync",
+    "--metrics-recording-only",
+    "--no-first-run",
+]
+
+BLOCKED_RESOURCE_TYPES = {"media", "font"}
 
 DANGEROUS_EXTENSIONS = (".apk", ".exe", ".msi", ".bat", ".scr", ".dmg", ".sh")
 DANGEROUS_MIME_KEYWORDS = (
@@ -56,6 +93,67 @@ _URGENCY_PATTERNS: dict[str, re.Pattern[str]] = {
     kw: re.compile(rf"(?<![a-z0-9]){re.escape(kw)}(?![a-z0-9])", re.IGNORECASE)
     for kw in URGENCY_KEYWORDS
 }
+
+
+class SandboxBrowserPool:
+    """Manages a warm headless Chromium instance and concurrency semaphore."""
+
+    def __init__(self, max_concurrent: int = MAX_CONCURRENT_SANDBOXES) -> None:
+        self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
+        self._lock = asyncio.Lock()
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+
+    @property
+    def is_ready(self) -> bool:
+        return self._browser is not None and self._browser.is_connected()
+
+    async def startup(self) -> None:
+        if not PLAYWRIGHT_AVAILABLE:
+            logger.warning("Playwright is not installed; sandbox detonation will be unavailable.")
+            return
+        async with self._lock:
+            if self._browser is None or not self._browser.is_connected():
+                self._playwright = await async_playwright().start()
+                self._browser = await self._playwright.chromium.launch(
+                    headless=True,
+                    args=CHROMIUM_HARDENED_ARGS,
+                )
+                logger.info("Warm Chromium sandbox pool initialized.")
+
+    async def shutdown(self) -> None:
+        async with self._lock:
+            if self._browser is not None:
+                try:
+                    await self._browser.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._browser = None
+            if self._playwright is not None:
+                try:
+                    await self._playwright.stop()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._playwright = None
+            logger.info("Warm Chromium sandbox pool shut down.")
+
+    async def acquire_browser(self) -> tuple[Browser, bool]:
+        """Return (browser, owns_temporary_instance)."""
+        if self._browser is not None and self._browser.is_connected():
+            return self._browser, False
+        if not PLAYWRIGHT_AVAILABLE:
+            raise RuntimeError("Playwright is not installed in this environment.")
+        pw = await async_playwright().start()
+        browser = await pw.chromium.launch(headless=True, args=CHROMIUM_HARDENED_ARGS)
+        browser._temp_pw = pw  # type: ignore[attr-defined]
+        return browser, True
+
+    @property
+    def semaphore(self) -> asyncio.Semaphore:
+        return self._semaphore
+
+
+browser_pool = SandboxBrowserPool()
 
 
 def _normalize_url(url: str) -> str:
@@ -127,6 +225,16 @@ def _detect_download_trap_from_headers(headers: dict[str, str], url: str) -> dic
             "warning": warning,
         }
     return None
+
+
+def _audit_security_headers(headers: dict[str, str]) -> dict[str, bool]:
+    lower_keys = {k.lower() for k in headers}
+    return {
+        "hsts": "strict-transport-security" in lower_keys,
+        "csp": "content-security-policy" in lower_keys,
+        "x_frame_options": "x-frame-options" in lower_keys,
+        "x_content_type_options": "x-content-type-options" in lower_keys,
+    }
 
 
 async def _inspect_dom_fields(page: Page) -> tuple[list[str], list[dict[str, str]]]:
@@ -237,14 +345,15 @@ async def detonate_url(url: str) -> dict[str, Any]:
         "screenshot_sha256": None,
         "http_status": None,
         "response_headers": {},
+        "security_headers_audit": {},
         "ssrf_check": ssrf_check,
         "ssrf_blocked": not ssrf_check["allowed"],
         "apk_trap": {"detected": False},
         "security_profile": {
-            "ssrf_guard": "ACTIVE",
+            "ssrf_guard": "ACTIVE (per-hop route guard)",
             "stealth_mobile": "Android 14 · 412x915 · webdriver hidden",
             "permissions": "DENIED (zero-trust)",
-            "popup_blocker": "ACTIVE",
+            "popup_blocker": "ACTIVE + Dialog Auto-Dismiss",
             "download_guard": "INTERCEPT & ABORT",
         },
         "error": None,
@@ -254,8 +363,9 @@ async def detonate_url(url: str) -> dict[str, Any]:
         result["error"] = ssrf_check["reason"]
         return result
 
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+    async with browser_pool.semaphore:
+        browser, owns_temp = await browser_pool.acquire_browser()
+        context = None
         try:
             context = await browser.new_context(
                 accept_downloads=False,
@@ -276,8 +386,40 @@ async def detonate_url(url: str) -> dict[str, Any]:
 
             page = await context.new_page()
 
-            # Popup & tab bomb suppression
+            # Popup, tab bomb & JS alert/confirm/prompt suppression
             page.on("popup", lambda popup_page: asyncio.create_task(popup_page.close()))
+            page.on("dialog", lambda dialog: asyncio.create_task(dialog.dismiss()))
+
+            ssrf_in_flight_block: dict[str, Any] | None = None
+            nav_hop_count = 0
+            redirect_loop_blocked = False
+
+            async def _route_guard(route: Route) -> None:
+                nonlocal ssrf_in_flight_block, nav_hop_count, redirect_loop_blocked
+                req = route.request
+                req_url = req.url
+
+                if req.resource_type in BLOCKED_RESOURCE_TYPES:
+                    await route.abort("blockedbyclient")
+                    return
+
+                if req.is_navigation_request() and req.frame == page.main_frame:
+                    nav_hop_count += 1
+                    if nav_hop_count > MAX_REDIRECT_HOPS + 1:
+                        redirect_loop_blocked = True
+                        await route.abort("blockedbyclient")
+                        return
+
+                hop_check = validate_url_ssrf(req_url)
+                if not hop_check["allowed"]:
+                    if req.is_navigation_request():
+                        ssrf_in_flight_block = hop_check
+                    await route.abort("blockedbyclient")
+                    return
+
+                await route.continue_()
+
+            await page.route("**/*", _route_guard)
 
             intercepted_trap: dict[str, Any] | None = None
 
@@ -325,7 +467,16 @@ async def detonate_url(url: str) -> dict[str, Any]:
                 response = await page.goto(target_url, wait_until="load", timeout=TIMEOUT_MS)
                 await page.wait_for_timeout(350)
             except Exception as nav_exc:  # noqa: BLE001
-                # Playwright throws "Download is starting" when a URL triggers an immediate APK/file download!
+                if ssrf_in_flight_block is not None:
+                    result["ssrf_blocked"] = True
+                    result["ssrf_check"] = ssrf_in_flight_block
+                    result["error"] = ssrf_in_flight_block["reason"]
+                    result["redirect_chain"] = _merge_redirect_chains([], frame_navigations, target_url)
+                    return result
+                if redirect_loop_blocked:
+                    result["error"] = f"Redirect loop aborted after exceeding {MAX_REDIRECT_HOPS} hops."
+                    result["redirect_chain"] = _merge_redirect_chains([], frame_navigations, target_url)
+                    return result
                 if intercepted_trap is not None or "Download is starting" in str(nav_exc):
                     if intercepted_trap is None:
                         filename = _extract_filename_from_disposition("", target_url)
@@ -344,6 +495,13 @@ async def detonate_url(url: str) -> dict[str, Any]:
                 else:
                     raise
 
+            if ssrf_in_flight_block is not None:
+                result["ssrf_blocked"] = True
+                result["ssrf_check"] = ssrf_in_flight_block
+                result["error"] = ssrf_in_flight_block["reason"]
+                result["redirect_chain"] = _merge_redirect_chains([], frame_navigations, target_url)
+                return result
+
             if response is not None:
                 result["http_status"] = response.status
                 interesting_headers = (
@@ -354,10 +512,13 @@ async def detonate_url(url: str) -> dict[str, Any]:
                     "location",
                     "strict-transport-security",
                     "content-security-policy",
+                    "x-frame-options",
+                    "x-content-type-options",
                 )
                 result["response_headers"] = {
                     k: v for k, v in response.headers.items() if k.lower() in interesting_headers
                 }
+                result["security_headers_audit"] = _audit_security_headers(response.headers)
                 if intercepted_trap is None:
                     header_trap = _detect_download_trap_from_headers(response.headers, response.url)
                     if header_trap:
@@ -397,6 +558,21 @@ async def detonate_url(url: str) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             result["error"] = f"Failed to detonate URL: {exc}"
         finally:
-            await browser.close()
+            if context is not None:
+                try:
+                    await context.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            if owns_temp:
+                try:
+                    await browser.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                temp_pw = getattr(browser, "_temp_pw", None)
+                if temp_pw is not None:
+                    try:
+                        await temp_pw.stop()
+                    except Exception:  # noqa: BLE001
+                        pass
 
     return result
