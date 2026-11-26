@@ -35,6 +35,7 @@ from backend.verdict import (
     build_verdict,
     generate_voice_audio_async,
     get_emergency_script,
+    localize_analysis_with_gemini_async,
 )
 from backend.vision import analyze_screenshot_with_vision_async
 
@@ -51,6 +52,10 @@ FRONTEND_INDEX = BASE_DIR / "frontend" / "index.html"
 
 URL_PATTERN = re.compile(
     r"((?:https?|file|ftp|gopher|javascript|data):[^\s<>\"'\]\)]+|www\.[^\s<>\"'\]\)]+)",
+    re.IGNORECASE,
+)
+BARE_DOMAIN_PATTERN = re.compile(
+    r"(?<![@\w.-])((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+(?:com|org|net|in|co\.in|gov\.in|edu|io|xyz|info|biz|me|ly|app|dev|ai|online|site|top|club|live|tech|shop|link|click)(?:/[^\s<>\"'\]\)]*)?)",
     re.IGNORECASE,
 )
 
@@ -138,9 +143,13 @@ class EmergencyAudioRequest(BaseModel):
 
 def extract_first_url(message: str) -> str | None:
     match = URL_PATTERN.search(message)
-    if not match:
-        return None
-    return match.group(1).rstrip(".,!?;:")
+    if match:
+        return match.group(1).rstrip(".,!?;:")
+    bare = BARE_DOMAIN_PATTERN.search(message)
+    if bare:
+        candidate = bare.group(1).rstrip(".,!?;:")
+        return f"https://{candidate}"
+    return None
 
 
 @app.get("/healthz")
@@ -331,6 +340,7 @@ async def _run_analysis_pipeline(
         vision_data,
         language,
     )
+    await localize_analysis_with_gemini_async(verdict_data, vision_data, language)
     action_kit = build_cybercrime_report(
         redacted_message,
         extracted_url,
@@ -416,6 +426,7 @@ async def _run_image_only_pipeline(
     if on_progress:
         await on_progress(3, "Generating verdict and voice summary...")
     verdict_data = build_verdict(redacted_message, sandbox_data, intel_data, vision_data, language)
+    await localize_analysis_with_gemini_async(verdict_data, vision_data, language)
     action_kit = build_cybercrime_report(redacted_message, "uploaded-image", sandbox_data, intel_data, vision_data, verdict_data)
     voice_audio_base64 = await generate_voice_audio_async(verdict_data["voice_script"], verdict_data["language"])
 

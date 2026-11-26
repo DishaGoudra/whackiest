@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import json
 import logging
 import os
 import time
@@ -634,6 +635,72 @@ async def generate_voice_audio_async(script_text: str, language: str = "en") -> 
     except httpx.HTTPError as exc:
         logger.warning("ElevenLabs request failed: %s", exc)
         return None
+
+
+async def localize_analysis_with_gemini_async(
+    verdict_data: dict[str, Any],
+    vision_data: dict[str, Any],
+    language: str,
+) -> None:
+    """Translate evidence bullets and visual explanation into the selected language via Gemini."""
+    lang = language if language in SUPPORTED_LANGUAGE_NAMES else "en"
+    if lang == "en":
+        return
+
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not api_key:
+        return
+
+    lang_name = SUPPORTED_LANGUAGE_NAMES[lang]
+    evidence = verdict_data.get("evidence") or []
+    visual_verdict = vision_data.get("visual_verdict") or ""
+    tactics = vision_data.get("manipulation_tactics") or []
+
+    cache_payload = json.dumps({"lang": lang, "ev": evidence, "vv": visual_verdict, "tac": tactics}, sort_keys=True)
+    cache_key = hashlib.sha256(cache_payload.encode("utf-8")).hexdigest()
+    now = time.monotonic()
+    cached = _AUDIO_CACHE.get(f"loc:{cache_key}")
+    if cached and cached[0] > now:
+        parsed = json.loads(cached[1])
+        verdict_data["evidence"] = parsed.get("evidence") or evidence
+        vision_data["visual_verdict"] = parsed.get("visual_verdict") or visual_verdict
+        if parsed.get("manipulation_tactics"):
+            vision_data["manipulation_tactics"] = parsed["manipulation_tactics"]
+        return
+
+    prompt = (
+        f"Translate these cybersecurity verdict explanations into natural, calm {lang_name} ({lang}) "
+        "for everyday users. Keep numbers, URLs, and 1930 unchanged. Respond ONLY with valid JSON:\n"
+        f"{json.dumps({'evidence': evidence, 'visual_verdict': visual_verdict, 'manipulation_tactics': tactics}, ensure_ascii=False)}"
+    )
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={api_key}"
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.1, "responseMimeType": "application/json"},
+    }
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(endpoint, json=payload, timeout=12.0)
+        if resp.status_code != 200:
+            return
+        raw_text = (
+            resp.json()
+            .get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+            .strip()
+        )
+        parsed = json.loads(raw_text)
+        if isinstance(parsed.get("evidence"), list) and parsed["evidence"]:
+            verdict_data["evidence"] = [str(x) for x in parsed["evidence"]][:4]
+        if isinstance(parsed.get("visual_verdict"), str) and parsed["visual_verdict"].strip():
+            vision_data["visual_verdict"] = parsed["visual_verdict"].strip()
+        if isinstance(parsed.get("manipulation_tactics"), list):
+            vision_data["manipulation_tactics"] = parsed["manipulation_tactics"][:4]
+        _AUDIO_CACHE[f"loc:{cache_key}"] = (now + AUDIO_CACHE_TTL_SECONDS, json.dumps(parsed, ensure_ascii=False))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Gemini localization fallback: %s", exc)
 
 
 def generate_voice_audio(script_text: str, language: str = "en") -> str | None:

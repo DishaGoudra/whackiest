@@ -731,13 +731,20 @@ function clearUploadedImage() {
 }
 
 function openOfficialReport() {
-  if (!lastAnalysisData) return;
-  const data = lastAnalysisData;
+  const data = lastAnalysisData || {
+    status: "DANGEROUS",
+    risk_score: 85,
+    defanged_url: "hxxp[://]127[.]0[.]0[.]1:8000/mock-bescom-kyc",
+    redacted_message: "[DEMO] Dear Consumer, your BESCOM electricity meter will be disconnected tonight. ([REDACTED_PHONE])",
+    screenshot_sha256: "sample-preview-run-inspection-for-live-hash",
+    vision: { impersonated_brand: "BESCOM Karnataka" },
+    intel: { network: { ip: "127.0.0.1", asn: "LOCAL-DEMO", country: "IN" } },
+  };
   const modal = document.getElementById("officialReportModal");
   const body = document.getElementById("officialReportBody");
   if (!modal || !body) return;
 
-  const caseTag = document.getElementById("caseNumberTag").textContent || "CASE 0001";
+  const caseTag = lastAnalysisData ? (document.getElementById("caseNumberTag").textContent || "CASE 0001") : "SAMPLE PREVIEW";
   const net = (data.intel && data.intel.network) || {};
   const vision = data.vision || {};
   const nowUtc = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
@@ -1406,16 +1413,32 @@ function getHistory() {
 
 function saveToHistory(data, caseNum) {
   const list = getHistory();
+  const compactSnapshot = {
+    ...data,
+    voice_audio_base64: null,
+    screenshot_base64: data.screenshot_base64 && data.screenshot_base64.length < 300000 ? data.screenshot_base64 : null,
+  };
   const entry = {
     case_id: formatCaseNumber(caseNum),
     defanged_url: data.defanged_url || "",
     status: data.status || "SUSPICIOUS",
     risk_score: data.risk_score ?? 0,
     timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    snapshot: compactSnapshot,
   };
   const updated = [entry, ...list.filter((i) => i.defanged_url !== entry.defanged_url)].slice(0, 10);
   try { localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated)); } catch {}
   renderHistory();
+}
+
+function restoreHistoryItem(item) {
+  if (!item || !item.snapshot) {
+    showToast("Run a new scan to inspect full details");
+    return;
+  }
+  const drawer = document.getElementById("historyDrawer");
+  if (drawer && !drawer.classList.contains("hidden")) toggleHistoryDrawer();
+  renderResults(item.snapshot, { skipRecord: true, overrideCaseId: item.case_id });
 }
 
 function clearHistory() {
@@ -1442,8 +1465,10 @@ function renderHistory() {
     return;
   }
   list.forEach((item) => {
-    const card = document.createElement("div");
-    card.className = "surface-card rounded-xl p-3";
+    const card = document.createElement("button");
+    card.type = "button";
+    card.onclick = () => restoreHistoryItem(item);
+    card.className = "focus-ring surface-card w-full rounded-xl p-3 text-left transition-opacity hover:opacity-90";
     card.style.borderLeft = `2px solid ${item.status === "SAFE" ? "var(--ok)" : item.status === "SUSPICIOUS" ? "var(--warn)" : "var(--bad)"}`;
     const top = document.createElement("div");
     top.className = "flex items-center justify-between gap-2";
@@ -1477,8 +1502,10 @@ function renderBenchRecent(list) {
     return;
   }
   top3.forEach((item) => {
-    const row = document.createElement("div");
-    row.className = "surface-deep flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs";
+    const row = document.createElement("button");
+    row.type = "button";
+    row.onclick = () => restoreHistoryItem(item);
+    row.className = "focus-ring surface-deep flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-xs transition-opacity hover:opacity-90";
     const left = document.createElement("span");
     left.className = "truncate font-mono text-primary";
     left.textContent = item.defanged_url || "Uploaded image";
@@ -1687,7 +1714,7 @@ function updateRiskGauge(score, status) {
   arc.style.stroke = status === "SAFE" ? "var(--ok)" : status === "SUSPICIOUS" ? "var(--warn)" : "var(--bad)";
 }
 
-function renderResults(data) {
+function renderResults(data, options = {}) {
   stopAllAudio();
   lastAnalysisData = data;
   const verdictCardEl = document.getElementById("verdictCard");
@@ -1696,7 +1723,7 @@ function renderResults(data) {
   const status = data.status || "SUSPICIOUS";
   let matchedGuess = false;
   const spotBanner = document.getElementById("spotOutcomeBanner");
-  if (activePresetKey && spotGuess) {
+  if (!options.skipRecord && activePresetKey && spotGuess) {
     const actualGroup = status === "SAFE" ? "SAFE" : "DANGEROUS";
     matchedGuess = spotGuess === actualGroup;
     spotBanner.classList.remove("hidden");
@@ -1710,11 +1737,14 @@ function renderResults(data) {
     spotBanner.classList.add("hidden");
   }
 
-  const caseNum = recordScanProgress(data, selectedLanguage, matchedGuess);
-  const caseTag = formatCaseNumber(caseNum);
+  let caseTag = options.overrideCaseId || "CASE 0001";
+  if (!options.skipRecord) {
+    const caseNum = recordScanProgress(data, selectedLanguage, matchedGuess);
+    caseTag = formatCaseNumber(caseNum);
+    saveToHistory(data, caseNum);
+  }
   document.getElementById("caseNumberTag").textContent = caseTag;
   document.getElementById("specimenTagLabel").textContent = `${caseTag} · SPECIMEN`;
-  saveToHistory(data, caseNum);
 
   const riskScore = data.risk_score ?? 0;
   const evidence = data.evidence || [];

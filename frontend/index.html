@@ -202,6 +202,30 @@
       ::view-transition-group(root), ::view-transition-new(root) { animation: none !important; }
       * { transition-duration: 0.01ms !important; }
     }
+
+    @media print {
+      body > *:not(#officialReportModal) { display: none !important; }
+      #officialReportModal {
+        position: static !important;
+        display: block !important;
+        background: #ffffff !important;
+        color: #111111 !important;
+        padding: 0 !important;
+      }
+      #officialReportModal > div {
+        max-width: 100% !important;
+        max-height: none !important;
+        border: none !important;
+        background: #ffffff !important;
+        color: #111111 !important;
+        box-shadow: none !important;
+      }
+      #officialReportModal button { display: none !important; }
+      #officialReportModal th, #officialReportModal td, #officialReportModal h2, #officialReportModal p {
+        color: #111111 !important;
+        border-color: #d4d4d8 !important;
+      }
+    }
   </style>
 </head>
 <body id="appBody" class="min-h-screen font-sans antialiased">
@@ -284,6 +308,9 @@
             </button>
             <button id="navHelpBtn" type="button" role="menuitem" onclick="toggleNavMenu(true); toggleHelpDrawer()" class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-medium text-primary hover:bg-white/5">
               <span data-i18n="nav_help">Help and FAQ</span>
+            </button>
+            <button type="button" role="menuitem" onclick="toggleNavMenu(true); openOfficialReport()" class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-medium text-primary hover:bg-white/5">
+              <span>Official dossier (PDF)</span>
             </button>
             <button type="button" role="menuitem" onclick="toggleNavMenu(true); openLegalModal('choices')" class="focus-ring flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-xs font-medium text-secondary hover:bg-white/5 hover:text-primary">
               <span>Manage local data</span>
