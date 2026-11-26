@@ -613,6 +613,29 @@
             </div>
           </div>
         </div>
+
+        <!-- Structured Summary Table Directly Under Inspect Verdict -->
+        <div class="mt-5 grid grid-cols-1 gap-3 pt-4 sm:grid-cols-4" style="border-top: 1px solid var(--line);">
+          <div class="surface-deep rounded-lg px-3 py-2">
+            <p class="text-[11px] text-muted">Target</p>
+            <p id="summaryTargetVal" class="mt-0.5 truncate font-mono text-xs text-primary">—</p>
+          </div>
+          <div class="surface-deep rounded-lg px-3 py-2">
+            <p class="text-[11px] text-muted">Impersonated brand</p>
+            <p id="summaryBrandVal" class="mt-0.5 truncate text-xs text-primary">None detected</p>
+          </div>
+          <div class="surface-deep rounded-lg px-3 py-2">
+            <p class="text-[11px] text-muted">Privacy scrubbed</p>
+            <p id="summaryPiiVal" class="mt-0.5 font-mono text-xs text-primary tabular-nums">0 items</p>
+          </div>
+          <div class="surface-deep flex items-center justify-between rounded-lg px-3 py-2">
+            <div>
+              <p class="text-[11px] text-muted">Official record</p>
+              <p class="mt-0.5 text-xs text-primary">Annexure A</p>
+            </div>
+            <button type="button" onclick="downloadOfficialPdf()" class="focus-ring surface-raised rounded px-2.5 py-1 text-xs font-medium text-primary hover:opacity-90">PDF</button>
+          </div>
+        </div>
       </div>
 
       <!-- FAMILY SAFE MODE -->
@@ -683,7 +706,8 @@
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <h3 class="text-sm font-medium text-primary">1930 / Chakshu incident draft</h3>
                 <div class="flex flex-wrap gap-2">
-                  <button type="button" onclick="openOfficialReport()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium text-primary">Official dossier</button>
+                  <button type="button" onclick="downloadOfficialPdf()" class="focus-ring min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium" style="background-color: var(--accent); color: var(--accent-ink);">Download PDF</button>
+                  <button type="button" onclick="openOfficialReport()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium text-primary">Preview dossier</button>
                   <button id="copyComplaintBtn" type="button" onclick="copyText('complaintPreview', 'copyComplaintBtn', 'Copy complaint')" class="focus-ring min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium" style="background-color: var(--text); color: var(--bg);">Copy complaint</button>
                 </div>
               </div>
@@ -985,7 +1009,8 @@
           <h2 id="officialReportTitle" class="mt-1 text-lg font-medium text-primary">Official Suspicious Communication Dossier</h2>
         </div>
         <div class="flex items-center gap-2">
-          <button type="button" onclick="window.print()" class="focus-ring min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium" style="background-color: var(--accent); color: var(--accent-ink);">Print / Save PDF</button>
+          <button type="button" onclick="downloadOfficialPdf()" class="focus-ring min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium" style="background-color: var(--accent); color: var(--accent-ink);">Download PDF</button>
+          <button type="button" onclick="window.print()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium text-primary">Print</button>
           <button type="button" onclick="closeOfficialReport()" class="focus-ring surface-raised min-h-[36px] rounded-lg px-3 py-1.5 text-xs font-medium text-primary">Close</button>
         </div>
       </div>

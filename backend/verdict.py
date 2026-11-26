@@ -703,6 +703,99 @@ async def localize_analysis_with_gemini_async(
         logger.warning("Gemini localization fallback: %s", exc)
 
 
+def _pdf_escape(text: str) -> str:
+    """Escape text for PDF literal string in WinAnsi/ASCII."""
+    ascii_safe = text.encode("latin-1", "replace").decode("latin-1")
+    return ascii_safe.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def build_official_pdf_bytes(report: dict[str, Any]) -> bytes:
+    """Generate a valid, zero-dependency PDF 1.4 Official Cybercrime Incident Dossier."""
+    import textwrap
+
+    case_id = str(report.get("case_id") or "CASE 0001")
+    timestamp = str(report.get("timestamp") or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"))
+    status = str(report.get("status") or "SUSPICIOUS")
+    risk_score = report.get("risk_score", 0)
+    defanged_url = str(report.get("defanged_url") or "N/A")
+    brand = str(report.get("impersonated_brand") or "Unverified / Unknown")
+    network = str(report.get("network") or "Unresolved")
+    redacted_msg = str(report.get("redacted_message") or "N/A")
+    sha256 = str(report.get("screenshot_sha256") or "N/A")
+    evidence = report.get("evidence") or []
+
+    lines: list[tuple[str, int, str]] = [
+        ("F2", 14, "ANNEXURE A - OFFICIAL CYBERCRIME INCIDENT DOSSIER"),
+        ("F1", 10, "Prepared for National Cyber Crime Helpline (1930) & Chakshu (sancharsaathi.gov.in)"),
+        ("F1", 10, "-" * 84),
+        ("F2", 11, f"Reference ID: {case_id}    |    Generated: {timestamp}"),
+        ("F2", 11, f"Security Verdict: {status}    |    Risk Score: {risk_score} / 100"),
+        ("F1", 10, "-" * 84),
+        ("F2", 10, "1. SUSPECT COMMUNICATION & TARGET DETAILS"),
+        ("F1", 10, f"   Defanged URL      : {defanged_url[:75]}"),
+        ("F1", 10, f"   Impersonated Brand: {brand[:75]}"),
+        ("F1", 10, f"   Resolved Network  : {network[:75]}"),
+        ("F1", 10, f"   Evidence Hash     : {sha256[:64]}"),
+        ("F1", 10, ""),
+        ("F2", 10, "2. REDACTED MESSAGE EXCERPT (PERSONAL IDENTIFIERS MASKED)"),
+    ]
+    for wrapped in textwrap.wrap(redacted_msg, width=78)[:5]:
+        lines.append(("F1", 10, f"   {wrapped}"))
+
+    lines.append(("F1", 10, ""))
+    lines.append(("F2", 10, "3. KEY FINDINGS"))
+    for idx, ev in enumerate(evidence[:4], start=1):
+        for w_idx, wrapped in enumerate(textwrap.wrap(str(ev), width=74)[:3]):
+            prefix = f"   {idx}. " if w_idx == 0 else "      "
+            lines.append(("F1", 10, f"{prefix}{wrapped}"))
+
+    lines.extend([
+        ("F1", 10, ""),
+        ("F1", 10, "-" * 84),
+        ("F2", 10, "4. RECOMMENDED REPORTING CHANNELS"),
+        ("F1", 10, "   - Financial Fraud Helpline : Dial 1930 immediately"),
+        ("F1", 10, "   - Cyber Crime Portal       : https://cybercrime.gov.in"),
+        ("F1", 10, "   - Chakshu Fraud Reporting  : https://sancharsaathi.gov.in"),
+        ("F1", 9, ""),
+        ("F1", 9, "Declaration: Personal numbers have been masked and URLs defanged for safe reporting."),
+    ])
+
+    stream_cmds = ["BT"]
+    y = 780
+    for font_key, size, text in lines:
+        if y < 55:
+            break
+        stream_cmds.append(f"/{font_key} {size} Tf")
+        stream_cmds.append(f"1 0 0 1 48 {y} Tm ({_pdf_escape(text)}) Tj")
+        y -= size + 6
+    stream_cmds.append("ET")
+    stream_data = "\n".join(stream_cmds).encode("latin-1")
+
+    objects: list[bytes] = [
+        b"1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n",
+        b"2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n",
+        b"3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >> endobj\n",
+        f"4 0 obj << /Length {len(stream_data)} >> stream\n".encode("latin-1") + stream_data + b"\nendstream endobj\n",
+        b"5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier >> endobj\n",
+        b"6 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Courier-Bold >> endobj\n",
+    ]
+
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets: list[int] = [0]
+    for obj in objects:
+        offsets.append(len(pdf))
+        pdf.extend(obj)
+
+    xref_offset = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode("latin-1"))
+    for off in offsets[1:]:
+        pdf.extend(f"{off:010d} 00000 n \n".encode("latin-1"))
+    pdf.extend(
+        f"trailer << /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n".encode("latin-1")
+    )
+    return bytes(pdf)
+
+
 def generate_voice_audio(script_text: str, language: str = "en") -> str | None:
     """Synchronous wrapper for generate_voice_audio_async."""
     return asyncio.run(generate_voice_audio_async(script_text, language))

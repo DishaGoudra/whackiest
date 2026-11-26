@@ -32,6 +32,7 @@ from backend.sandbox import PLAYWRIGHT_AVAILABLE, browser_pool, detonate_url
 from backend.security import defang_url, redact_pii
 from backend.verdict import (
     build_cybercrime_report,
+    build_official_pdf_bytes,
     build_verdict,
     generate_voice_audio_async,
     get_emergency_script,
@@ -259,6 +260,19 @@ async def mock_bescom_kyc() -> HTMLResponse:
 </html>
 """
     return HTMLResponse(content=html_content)
+
+
+@app.post("/api/report/pdf")
+async def export_official_pdf(payload: dict[str, Any]) -> Response:
+    """Generate and return a downloadable official PDF dossier."""
+    pdf_bytes = build_official_pdf_bytes(payload)
+    raw_case = str(payload.get("case_id") or "CASE-0001").replace(" ", "-")
+    safe_name = re.sub(r"[^A-Za-z0-9_-]", "", raw_case) or "CASE-0001"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="scam-soc-dossier-{safe_name}.pdf"'},
+    )
 
 
 @app.post("/api/emergency-audio")

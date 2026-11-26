@@ -730,6 +730,51 @@ function clearUploadedImage() {
   }
 }
 
+async function downloadOfficialPdf() {
+  const data = lastAnalysisData || {
+    status: "DANGEROUS",
+    risk_score: 85,
+    defanged_url: "hxxp[://]127[.]0[.]0[.]1:8000/mock-bescom-kyc",
+    redacted_message: "[DEMO] Dear Consumer, your BESCOM electricity meter will be disconnected tonight. ([REDACTED_PHONE])",
+    screenshot_sha256: "sample-preview-run-inspection-for-live-hash",
+    evidence: ["Sample preview — run any inspection to populate live evidence."],
+    vision: { impersonated_brand: "BESCOM Karnataka" },
+    intel: { network: { ip: "127.0.0.1", asn: "LOCAL-DEMO", country: "IN" } },
+  };
+  const caseTag = lastAnalysisData ? (document.getElementById("caseNumberTag").textContent || "CASE-0001") : "SAMPLE-PREVIEW";
+  const net = (data.intel && data.intel.network) || {};
+  const payload = {
+    case_id: caseTag,
+    timestamp: new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC",
+    status: data.status || "SUSPICIOUS",
+    risk_score: data.risk_score ?? 0,
+    defanged_url: data.defanged_url || "N/A",
+    impersonated_brand: (data.vision && data.vision.impersonated_brand) || "Unverified / Unknown",
+    network: `${net.ip || "Unresolved"} · ${net.asn || "N/A"} (${net.country || "N/A"})`,
+    redacted_message: data.redacted_message || "N/A",
+    screenshot_sha256: data.screenshot_sha256 || "N/A",
+    evidence: data.evidence || [],
+  };
+  try {
+    const resp = await fetch("/api/report/pdf", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!resp.ok) throw new Error("PDF generation failed");
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `scam-soc-dossier-${caseTag.toLowerCase().replace(/\s+/g, "-")}.pdf`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    showToast("Official PDF dossier downloaded");
+  } catch {
+    showToast("Could not generate PDF");
+  }
+}
+
 function openOfficialReport() {
   const data = lastAnalysisData || {
     status: "DANGEROUS",
@@ -1791,6 +1836,12 @@ function renderResults(data, options = {}) {
 
   document.getElementById("domainSummaryBadge").textContent = intel.domain_age_summary || "Domain checked";
   document.getElementById("tlsSummaryBadge").textContent = (intel.tls && intel.tls.note) || "TLS checked";
+  const sumTarget = document.getElementById("summaryTargetVal");
+  if (sumTarget) sumTarget.textContent = data.defanged_url || "Uploaded image";
+  const sumBrand = document.getElementById("summaryBrandVal");
+  if (sumBrand) sumBrand.textContent = vision.impersonated_brand || "None detected";
+  const sumPii = document.getElementById("summaryPiiVal");
+  if (sumPii) sumPii.textContent = `${totalPii} item(s)`;
 
   currentVoiceScript = data.voice_script || "";
   currentAudioBase64 = data.voice_audio_base64 || null;
