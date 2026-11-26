@@ -926,24 +926,24 @@
           </div>
         </div>
 
-        <!-- Right 4 Columns (every item opens a readable page/view) -->
+        <!-- Right 4 Columns (on-page sections navigate directly; policy pages open modal) -->
         <div class="lg:col-span-8 grid grid-cols-2 gap-8 sm:grid-cols-4">
           <div class="space-y-2.5">
             <h3 class="text-xs font-medium text-primary">Sandbox tools</h3>
             <ul class="space-y-2 text-xs text-secondary">
-              <li><button type="button" onclick="openLegalModal('inspector')" class="focus-ring rounded text-left hover:text-primary">Link inspector</button></li>
-              <li><button type="button" onclick="openLegalModal('family')" class="focus-ring rounded text-left hover:text-primary">Family safe view</button></li>
-              <li><button type="button" onclick="openLegalModal('soc')" class="focus-ring rounded text-left hover:text-primary">SOC analyst view</button></li>
-              <li><button type="button" onclick="openLegalModal('cases')" class="focus-ring rounded text-left hover:text-primary">Reference cases</button></li>
+              <li><a href="#workbench" onclick="setTimeout(() => document.getElementById('messageInput').focus(), 250)" class="focus-ring rounded hover:text-primary">Link inspector</a></li>
+              <li><button type="button" onclick="setViewMode('family'); window.scrollTo({top:0, behavior:'smooth'})" class="focus-ring rounded text-left hover:text-primary">Family safe view</button></li>
+              <li><button type="button" onclick="setViewMode('soc'); window.scrollTo({top:0, behavior:'smooth'})" class="focus-ring rounded text-left hover:text-primary">SOC analyst view</button></li>
+              <li><a href="#caseGallery" class="focus-ring rounded hover:text-primary">Reference cases</a></li>
             </ul>
           </div>
 
           <div class="space-y-2.5">
             <h3 class="text-xs font-medium text-primary">Product</h3>
             <ul class="space-y-2 text-xs text-secondary">
-              <li><button type="button" onclick="openLegalModal('how')" class="focus-ring rounded text-left hover:text-primary">How it works</button></li>
-              <li><button type="button" onclick="openLegalModal('languages')" class="focus-ring rounded text-left hover:text-primary">25 voice languages</button></li>
-              <li><button type="button" onclick="openLegalModal('sos')" class="focus-ring rounded text-left hover:text-primary">Emergency SOS guide</button></li>
+              <li><a href="#howItWorks" class="focus-ring rounded hover:text-primary">How it works</a></li>
+              <li><button type="button" onclick="document.getElementById('langDropdownBtn').scrollIntoView({behavior:'smooth', block:'center'}); setTimeout(() => toggleLangDropdown(), 300)" class="focus-ring rounded text-left hover:text-primary">25 voice languages</button></li>
+              <li><button type="button" onclick="openDamageControl()" class="focus-ring rounded text-left hover:text-primary">Emergency SOS guide</button></li>
               <li><button type="button" onclick="toggleHelpDrawer()" class="focus-ring rounded text-left hover:text-primary">Help and FAQ</button></li>
             </ul>
           </div>
